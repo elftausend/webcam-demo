@@ -2,24 +2,25 @@ mod cu_filter;
 mod jpeg_decoder;
 
 use std::io;
-use std::ptr::null_mut;
 use std::sync::{mpsc, RwLock};
 use std::thread;
 use std::time::Instant;
 
+use custos::buf;
 use glium::index::PrimitiveType;
 use glium::{glutin, Surface};
 use glium::{implement_vertex, program, uniform};
 
-use ::jpeg_decoder as jpeg;
-
-use nvjpeg_sys::{check, nvjpegCreateSimple, nvjpegHandle_t};
 use v4l::buffer::Type;
 use v4l::io::traits::CaptureStream;
 use v4l::prelude::*;
 use v4l::video::capture::Parameters;
 use v4l::video::Capture;
 use v4l::{Format, FourCC};
+
+use crate::cu_filter::correlate_cu;
+
+
 
 // https://github.com/raymanfx/libv4l-rs/blob/master/examples/glium.rs
 
@@ -139,10 +140,16 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let (tx, rx) = mpsc::channel();
 
-    let mut decoder = unsafe { jpeg_decoder::JpegDecoder::new(width as usize, height as usize)? };
+    let filter_rows = 3;
+    let filter_cols = 3;
 
     thread::spawn(move || {
         let dev = dev.write().unwrap();
+
+        let mut decoder: jpeg_decoder::JpegDecoder<'_> = unsafe { jpeg_decoder::JpegDecoder::new(width as usize, height as usize).unwrap() };
+
+        let filter = buf![1; filter_rows * filter_cols].to_gpu();
+        let mut filtered = buf![1; width as usize * height as usize * 3].to_gpu();
 
         // Setup a buffer stream
         let mut stream = MmapStream::with_buffers(&dev, Type::VideoCapture, buffer_count).unwrap();
@@ -152,19 +159,17 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let data = match &format.fourcc.repr {
                 b"RGB3" => buf.to_vec(),
                 b"MJPG" => {
-                    println!("yes, jpg");
                     // Decode the JPEG frame to RGB
 
-                    unsafe { decoder.decode(buf) }.unwrap();
-                    //let res = decoder.channels.iter().map(|buf| buf.read()).flatten().collect::<Vec<u8>>();
-
-                    let res = decoder.channel.read();
-
-                    //let mut decoder = jpeg::Decoder::new(buf);
-                    //decoder.decode().expect("failed to decode JPEG")
-                    res
+                    //let mut input = buf![10; width as usize * height as usize * 3].to_gpu();
 
                     // directly write into 2d gl texture
+                    unsafe { decoder.decode(buf) }.unwrap(); 
+                    correlate_cu(&decoder.channel, &filter, &mut filtered, height as usize * 3, width as usize, filter_rows, filter_cols);
+                    //correlate_cu(&input, &filter, &mut filtered, height as usize, width as usize, filter_rows, filter_cols);
+
+                    //decoder.channel.read()                    
+                    filtered.read()
                 }
                 _ => panic!("invalid buffer pixelformat"),
             };

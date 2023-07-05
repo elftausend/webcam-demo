@@ -7,7 +7,6 @@ edition = "2021"
 
 [dependencies]
 glium = "0.32.1"
-jpeg-decoder = "0.3.0"
 v4l = "0.14.0"
 custos = { path = "../custos", default-features=false, features=["cuda", "static-api"] }
 nvjpeg-sys = { path = "../nvjpeg-rs/nvjpeg-sys" }
