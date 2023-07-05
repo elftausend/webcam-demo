@@ -18,7 +18,7 @@ use v4l::video::capture::Parameters;
 use v4l::video::Capture;
 use v4l::{Format, FourCC};
 
-use crate::cu_filter::correlate_cu;
+use crate::cu_filter::{correlate_cu, correlate_valid_mut, correlate_fully};
 
 
 
@@ -149,11 +149,12 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut decoder: jpeg_decoder::JpegDecoder<'_> = unsafe { jpeg_decoder::JpegDecoder::new(width as usize, height as usize).unwrap() };
 
         let filter = buf![1; filter_rows * filter_cols].to_gpu();
-        let mut filtered = buf![1; width as usize * height as usize * 3].to_gpu();
+        let mut filtered = buf![0; width as usize * height as usize * 3].to_gpu();
 
         // Setup a buffer stream
         let mut stream = MmapStream::with_buffers(&dev, Type::VideoCapture, buffer_count).unwrap();
 
+        let mut out = vec![0; width as usize * height as usize * 3];
         loop {
             let (buf, _) = stream.next().unwrap();
             let data = match &format.fourcc.repr {
@@ -164,12 +165,43 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     //let mut input = buf![10; width as usize * height as usize * 3].to_gpu();
 
                     // directly write into 2d gl texture
-                    unsafe { decoder.decode(buf) }.unwrap(); 
-                    correlate_cu(&decoder.channel, &filter, &mut filtered, height as usize * 3, width as usize, filter_rows, filter_cols);
+
+                    unsafe { decoder.decode_rgb(buf) }.unwrap(); 
+                    let mut data = Vec::with_capacity(height as usize * 3 * width as usize);
+                    let res = decoder.channels.as_ref().unwrap().iter().map(|x| x.read_to_vec()).collect::<Vec<Vec<u8>>>();
+
+                    let mut channel0 = vec![0; height as usize * width as usize];
+                    correlate_fully(&res[0], &filter.read(), &mut channel0, height as usize, width as usize, filter_rows, filter_cols);
+                    //correlate_valid_mut(&res[0], (height as usize, width as usize), &filter.read(), (filter_rows, filter_cols), &mut channel0);
+
+                    let mut channel1 = vec![0; height as usize * width as usize];
+                    correlate_fully(&res[1], &filter.read(), &mut channel1, height as usize, width as usize, filter_rows, filter_cols);
+                    //correlate_valid_mut(&res[1], (height as usize, width as usize), &filter.read(), (filter_rows, filter_cols), &mut channel1);
+
+                    let mut channel2 = vec![0; height as usize * width as usize];
+                    correlate_fully(&res[2], &filter.read(), &mut channel2, height as usize, width as usize, filter_rows, filter_cols);
+                    //correlate_valid_mut(&res[2], (height as usize, width as usize), &filter.read(), (filter_rows, filter_cols), &mut channel2);
+                    
+                    for (i, _) in channel0.iter().enumerate() {
+                        data.push(channel0[i]);
+                        data.push(channel1[i]);
+                        data.push(channel2[i]);
+                    }
+
+                    data
+                    //unsafe { decoder.decode_rgbi(buf) }.unwrap(); 
+                    //correlate_cu(&decoder.channel, &filter, &mut filtered, height as usize * 3, width as usize, filter_rows, filter_cols);
+
+                    //correlate_fully(&decoder.channel.as_ref().unwrap().read(), &filter.read(), &mut out, height as usize * 3, width as usize, filter_rows, filter_cols);
+                    //correlate_valid_mut(&decoder.channel.read(), (height as usize * 3, width as usize), &filter.read(), (filter_rows, filter_cols), &mut out);
+
                     //correlate_cu(&input, &filter, &mut filtered, height as usize, width as usize, filter_rows, filter_cols);
 
-                    //decoder.channel.read()                    
-                    filtered.read()
+                    //decoder.channel.as_mut().unwrap().read()                    
+                    //filtered.read()
+                    //out.clone()
+
+                    
                 }
                 _ => panic!("invalid buffer pixelformat"),
             };

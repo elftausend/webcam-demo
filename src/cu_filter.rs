@@ -1,3 +1,5 @@
+use std::ops::Mul;
+
 use custos::{cuda::launch_kernel, prelude::{CUBuffer, Number}, CDatatype};
 
 pub fn cu_padding<T: CDatatype>(
@@ -138,4 +140,62 @@ pub fn correlate_valid_mut<T: Number>(
             out[y * out_cols + x] = sum;
         }
     }
+}
+
+
+pub fn correlate_fully<T: Number + Mul<U, Output = T>, U: Number>(
+    inputs: &[T],
+    filter: &[U],
+    out: &mut [T],
+    inp_rows: usize,
+    inp_cols: usize,
+    filter_rows: usize,
+    filter_cols: usize,
+) {
+    let x_padding = filter_cols - 1;
+    let y_padding = filter_rows - 1;
+
+    let padded_inputs = add_padding(inputs, inp_rows, inp_cols, x_padding, y_padding);
+    let padded_rows = inp_rows + y_padding * 2;
+    let padded_cols = inp_cols + x_padding * 2;
+
+    // attention: leaves the last padded row, col out
+    for move_down in 0..=padded_rows - filter_rows - y_padding {
+        for move_right in 0..=padded_cols - filter_cols - x_padding {
+            let mut sum = T::default();
+            for idx in 0..filter_rows {
+                let filter_idx = idx * filter_cols;
+                let filter_row = &filter[filter_idx..filter_idx + filter_cols];
+
+                let input_idx = move_down * padded_cols + move_right + idx * padded_cols;
+                let input_row = &padded_inputs[input_idx..input_idx + filter_cols];
+
+                for (filter_row, input_row) in input_row.iter().zip(filter_row) {
+                    sum += *filter_row * *input_row;
+                }
+            }
+            out[move_down * inp_cols + move_right] = sum;
+        }
+    }
+}
+
+pub fn add_padding<T: Number>(
+    inputs: &[T],
+    inp_rows: usize,
+    inp_cols: usize,
+    x_padding: usize,
+    y_padding: usize,
+) -> Vec<T> {
+    let mut padded_inputs =
+        vec![T::zero(); (inp_rows + y_padding * 2) * (inp_cols + x_padding * 2)];
+
+    for inp_row in 0..inp_rows {
+        for inp_col in 0..inp_cols {
+            padded_inputs[y_padding * (inp_cols + 2 * x_padding)
+                + x_padding
+                + inp_row * (inp_cols + 2 * x_padding)
+                + inp_col] = inputs[inp_row * inp_cols + inp_col];
+        }
+    }
+    padded_inputs
 }
