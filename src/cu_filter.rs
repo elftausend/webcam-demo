@@ -170,14 +170,52 @@ pub fn correlate_fully<T: Number + Mul<U, Output = T>, U: Number>(
                 let input_idx = move_down * padded_cols + move_right + idx * padded_cols;
                 let input_row = &padded_inputs[input_idx..input_idx + filter_cols];
 
-                for (filter_row, input_row) in input_row.iter().zip(filter_row) {
-                    sum += *filter_row * *input_row;
+                for (filter_row, input_row) in filter_row.iter().zip(input_row) {
+                    sum += *input_row * *filter_row;
                 }
             }
             out[move_down * inp_cols + move_right] = sum;
         }
     }
 }
+
+
+pub fn correlate_fully_u8(
+    inputs: &[u8],
+    filter: &[u8],
+    out: &mut [u8],
+    inp_rows: usize,
+    inp_cols: usize,
+    filter_rows: usize,
+    filter_cols: usize,
+) {
+    let x_padding = filter_cols - 1;
+    let y_padding = filter_rows - 1;
+
+    let padded_inputs = add_padding(inputs, inp_rows, inp_cols, x_padding, y_padding);
+    let padded_rows = inp_rows + y_padding * 2;
+    let padded_cols = inp_cols + x_padding * 2;
+
+    // attention: leaves the last padded row, col out
+    for move_down in 0..=padded_rows - filter_rows - y_padding {
+        for move_right in 0..=padded_cols - filter_cols - x_padding {
+            let mut sum = u8::default();
+            for idx in 0..filter_rows {
+                let filter_idx = idx * filter_cols;
+                let filter_row = &filter[filter_idx..filter_idx + filter_cols];
+
+                let input_idx = move_down * padded_cols + move_right + idx * padded_cols;
+                let input_row = &padded_inputs[input_idx..input_idx + filter_cols];
+
+                for (filter_row, input_row) in filter_row.iter().zip(input_row) {
+                    sum += *input_row / 16;
+                }
+            }
+            out[move_down * inp_cols + move_right] = sum;
+        }
+    }
+}
+
 
 pub fn add_padding<T: Number>(
     inputs: &[T],

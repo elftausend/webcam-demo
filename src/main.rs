@@ -18,8 +18,7 @@ use v4l::video::capture::Parameters;
 use v4l::video::Capture;
 use v4l::{Format, FourCC};
 
-use crate::cu_filter::{correlate_cu, correlate_valid_mut, correlate_fully};
-
+use crate::cu_filter::{correlate_cu, correlate_valid_mut, correlate_fully, correlate_fully_u8};
 
 
 // https://github.com/raymanfx/libv4l-rs/blob/master/examples/glium.rs
@@ -140,8 +139,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let (tx, rx) = mpsc::channel();
 
-    let filter_rows = 3;
-    let filter_cols = 3;
+    // light sensitivity => u8 overflow
+    let filter_rows = 5;
+    let filter_cols = 5;
 
     thread::spawn(move || {
         let dev = dev.write().unwrap();
@@ -171,15 +171,15 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     let res = decoder.channels.as_ref().unwrap().iter().map(|x| x.read_to_vec()).collect::<Vec<Vec<u8>>>();
 
                     let mut channel0 = vec![0; height as usize * width as usize];
-                    correlate_fully(&res[0], &filter.read(), &mut channel0, height as usize, width as usize, filter_rows, filter_cols);
+                    correlate_fully_u8(&res[0], &filter.read(), &mut channel0, height as usize, width as usize, filter_rows, filter_cols);
                     //correlate_valid_mut(&res[0], (height as usize, width as usize), &filter.read(), (filter_rows, filter_cols), &mut channel0);
 
                     let mut channel1 = vec![0; height as usize * width as usize];
-                    correlate_fully(&res[1], &filter.read(), &mut channel1, height as usize, width as usize, filter_rows, filter_cols);
+                    correlate_fully_u8(&res[1], &filter.read(), &mut channel1, height as usize, width as usize, filter_rows, filter_cols);
                     //correlate_valid_mut(&res[1], (height as usize, width as usize), &filter.read(), (filter_rows, filter_cols), &mut channel1);
 
                     let mut channel2 = vec![0; height as usize * width as usize];
-                    correlate_fully(&res[2], &filter.read(), &mut channel2, height as usize, width as usize, filter_rows, filter_cols);
+                    correlate_fully_u8(&res[2], &filter.read(), &mut channel2, height as usize, width as usize, filter_rows, filter_cols);
                     //correlate_valid_mut(&res[2], (height as usize, width as usize), &filter.read(), (filter_rows, filter_cols), &mut channel2);
                     
                     for (i, _) in channel0.iter().enumerate() {
