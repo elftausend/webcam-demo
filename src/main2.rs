@@ -113,16 +113,35 @@ pub fn main2() {
         );
         
 
-        cuGraphicsMapResources(1, &mut cuda_resource, device.stream().0);
+        let status = cuGraphicsMapResources(1, &mut cuda_resource, device.stream().0);
+        if status != 0 {
+            panic!("Cannot map resources");
+        }
 
-        cuGraphicsSubResourceGetMappedArray
+        let mut cuda_array: CUarray = std::ptr::null_mut();
+        let status = cuGraphicsSubResourceGetMappedArray(&mut cuda_array, cuda_resource, 0, 0);
+        if status != 0 {
+            panic!("Cannot get mapped array");
+        }
 
-        cuda_driver_sys::cuSurfObjectCreate
+        let desc = CUDA_RESOURCE_DESC {
+            resType: CUresourcetype::CU_RESOURCE_TYPE_ARRAY,
+            res: CUDA_RESOURCE_DESC_st__bindgen_ty_1 {
+                array: CUDA_RESOURCE_DESC_st__bindgen_ty_1__bindgen_ty_1 {
+                    hArray: cuda_array
+                }
+            } ,
+            flags: 0,
+        };
+        let mut cuda_surface = 0;
+        let status = cuSurfObjectCreate(&mut cuda_surface, &desc);
+        if status != 0 {
+            panic!("Cannot create surface");
+        }
 
-        let ptr = std::ptr::addr_of!(cuda_resource) as u64;
-        let mut buf: CUBuffer<u8> = CUBuffer {
+        let buf: CUBuffer<u8> = CUBuffer {
             ptr: CUDAPtr {
-                ptr,
+                ptr: cuda_surface,
                 flag: AllocFlag::Wrapper,
                 len: (width * height * 4) as usize,
                 p: std::marker::PhantomData,
@@ -135,11 +154,9 @@ pub fn main2() {
             extern "C" __global__ void writeToSurface(cudaSurfaceObject_t target, int width, int height) {
                 unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
                 unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
-                
-                //printf("%d %d w:%d h:%d \n", x, y, width, height);
+            
                 if (x < width && y < height) {
                     uchar4 data = make_uchar4(0xff, 0x00, 0x00, 0xff);
-                    printf("writing to %d %d\n", x, y);
                     surf2Dwrite(data, target, x * sizeof(uchar4), y);
                 }
             }
@@ -253,7 +270,7 @@ pub enum CUresourcetype_enum {
 }
 pub use self::CUresourcetype_enum as CUresourcetype;
 
-#[repr(C)]
+/*#[repr(C)]
 #[derive(Copy, Clone)]
 pub union CUDA_RESOURCE_DESC_st__bindgen_ty_1 {
     pub array: CUDA_RESOURCE_DESC_st__bindgen_ty_1__bindgen_ty_1,
@@ -262,14 +279,39 @@ pub union CUDA_RESOURCE_DESC_st__bindgen_ty_1 {
     pub pitch2D: CUDA_RESOURCE_DESC_st__bindgen_ty_1__bindgen_ty_4,
     pub reserved: CUDA_RESOURCE_DESC_st__bindgen_ty_1__bindgen_ty_5,
     _bindgen_union_align: [u64; 16usize],
-}
+}*/
 
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct CUDA_RESOURCE_DESC_st {
     pub resType: CUresourcetype,
-    pub res: cuda_driver_sys::CUDA_RESOURCE_DESC_st__bindgen_ty_1,
+    pub res: CUDA_RESOURCE_DESC_st__bindgen_ty_1,
     pub flags: ::std::os::raw::c_uint,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union CUDA_RESOURCE_DESC_st__bindgen_ty_1 {
+    pub array: CUDA_RESOURCE_DESC_st__bindgen_ty_1__bindgen_ty_1,
+    pub mipmap: CUDA_RESOURCE_DESC_st__bindgen_ty_1__bindgen_ty_2,
+    pub linear: cuda_driver_sys::CUDA_RESOURCE_DESC_st__bindgen_ty_1__bindgen_ty_3,
+    pub pitch2D: cuda_driver_sys::CUDA_RESOURCE_DESC_st__bindgen_ty_1__bindgen_ty_4,
+    pub reserved: cuda_driver_sys::CUDA_RESOURCE_DESC_st__bindgen_ty_1__bindgen_ty_5,
+    _bindgen_union_align: [u64; 16usize],
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, Hash, PartialOrd, Ord, PartialEq, Eq)]
+pub struct CUDA_RESOURCE_DESC_st__bindgen_ty_1__bindgen_ty_2 {
+    pub hMipmappedArray: cuda_driver_sys::CUmipmappedArray,
+}
+
+
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, Hash, PartialOrd, Ord, PartialEq, Eq)]
+pub struct CUDA_RESOURCE_DESC_st__bindgen_ty_1__bindgen_ty_1 {
+    pub hArray: CUarray,
 }
 
 pub type CUDA_RESOURCE_DESC = CUDA_RESOURCE_DESC_st;
