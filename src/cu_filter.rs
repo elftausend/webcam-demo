@@ -1,6 +1,10 @@
 use std::ops::Mul;
 
-use custos::{cuda::launch_kernel, prelude::{CUBuffer, Number}, CDatatype};
+use custos::{
+    cuda::launch_kernel,
+    prelude::{CUBuffer, Number},
+    CDatatype,
+};
 
 pub fn cu_padding<T: CDatatype>(
     input: &CUBuffer<T>,
@@ -104,7 +108,6 @@ pub fn correlate_cu<T: CDatatype>(
     .unwrap();
 }
 
-
 pub fn correlate_valid_mut<T: Number>(
     lhs_slice: &[T],
     lhs_dims: (usize, usize),
@@ -142,7 +145,6 @@ pub fn correlate_valid_mut<T: Number>(
     }
 }
 
-
 pub fn correlate_fully<T: Number + Mul<U, Output = T>, U: Number>(
     inputs: &[T],
     filter: &[U],
@@ -179,7 +181,6 @@ pub fn correlate_fully<T: Number + Mul<U, Output = T>, U: Number>(
     }
 }
 
-
 pub fn correlate_fully_u8(
     inputs: &[u8],
     filter: &[u8],
@@ -215,7 +216,6 @@ pub fn correlate_fully_u8(
         }
     }
 }
-
 
 pub fn add_padding<T: Number>(
     inputs: &[T],

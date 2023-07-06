@@ -4,7 +4,8 @@ use custos::{buf, prelude::CUBuffer, static_api::static_cuda, CUDA};
 use glium::buffer::Buffer;
 use nvjpeg_sys::{
     check, nvjpegCreateSimple, nvjpegDecode, nvjpegHandle_t, nvjpegImage_t, nvjpegJpegStateCreate,
-    nvjpegJpegState_t, nvjpegOutputFormat_t_NVJPEG_OUTPUT_RGB, nvjpegOutputFormat_t_NVJPEG_OUTPUT_RGBI,
+    nvjpegJpegState_t, nvjpegOutputFormat_t_NVJPEG_OUTPUT_RGB,
+    nvjpegOutputFormat_t_NVJPEG_OUTPUT_RGBI,
 };
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -35,7 +36,7 @@ impl<'a> JpegDecoder<'a> {
 
         let mut image: nvjpegImage_t = nvjpegImage_t::new();
 
-        /* 
+        /*
 
         */
 
@@ -53,7 +54,7 @@ impl<'a> JpegDecoder<'a> {
     pub unsafe fn decode_rgbi(&mut self, raw_data: &[u8]) -> Result<(), Error> {
         if self.channel.is_none() {
             let channel = buf![0; self.width * self.height * 3].to_gpu();
-            self.image.pitch[0] = self.width*3;
+            self.image.pitch[0] = self.width * 3;
             self.image.channel[0] = channel.cu_ptr() as *mut _;
             self.channel = Some(channel);
         }
@@ -76,13 +77,13 @@ impl<'a> JpegDecoder<'a> {
             self.image.pitch[0] = self.width;
             self.image.pitch[1] = self.width;
             self.image.pitch[2] = self.width;
-    
+
             let channels = [
                 buf![0; self.image.pitch[0] * self.height].to_gpu(),
                 buf![0; self.image.pitch[0] * self.height].to_gpu(),
                 buf![0; self.image.pitch[0] * self.height].to_gpu(),
             ];
-    
+
             self.image.channel[0] = channels[0].cu_ptr() as *mut _;
             self.image.channel[1] = channels[1].cu_ptr() as *mut _;
             self.image.channel[2] = channels[2].cu_ptr() as *mut _;
