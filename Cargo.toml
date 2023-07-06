@@ -6,6 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+glow = "0.12.1"
+glutin = "0.28"
 glium = "0.32.1"
 v4l = "0.14.0"
 custos = { path = "../custos", default-features=false, features=["cuda", "static-api"] }

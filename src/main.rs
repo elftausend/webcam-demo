@@ -1,3 +1,5 @@
+
+mod main2;
 mod cu_filter;
 mod jpeg_decoder;
 
@@ -260,3 +262,15 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         );
     });
 }
+
+
+#[test]
+fn test_ptr() {
+    let val = 432;
+    let x = val as *mut i32;
+    
+
+    let res = std::ptr::addr_of!(x) as u64;
+    println!("res: {res}");
+}
+
