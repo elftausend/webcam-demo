@@ -26,6 +26,10 @@ use crate::cu_filter::{correlate_cu, correlate_valid_mut, correlate_fully, corre
 // https://github.com/raymanfx/libv4l-rs/blob/master/examples/glium.rs
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if true {
+        main2::main2();
+        Ok(())
+    } else {
     let width = 1920;
     let height = 1080;
 
@@ -261,6 +265,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             t0.elapsed().as_millis()
         );
     });
+}
 }
 
 
