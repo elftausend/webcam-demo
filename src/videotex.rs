@@ -47,11 +47,11 @@ pub fn interleave_rgb(
             unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
 
             if(x < width && y < height) {       
-                unsigned char valR = R[y * 1920 + x]; 
-                unsigned char valG = G[y * 1920 + x]; 
-                unsigned char valB = B[y * 1920 + x]; 
+                unsigned char valR = R[y * width + x]; 
+                unsigned char valG = G[y * width + x]; 
+                unsigned char valB = B[y * width + x]; 
                 uchar4 data = make_uchar4(valR, valG, valB, 0xff);
-                surf2Dwrite(data, target, x * sizeof(uchar4), y);
+                surf2Dwrite(data, target, x * sizeof(uchar4), height -1- y);
             }
         }
     "#;

@@ -1,4 +1,4 @@
-use std::{io, mem::size_of};
+use std::{io::{self, Write}, mem::size_of, time::Instant};
 
 use custos::{
     cuda::{api::CUstream, launch_kernel, CUDAPtr},
@@ -59,7 +59,6 @@ pub fn setup_webcam(
 }
 
 pub fn main2() {
-    let webcam = setup_webcam(640, 480).unwrap();
     let device = static_cuda();
     unsafe {
         let (gl, shader_version, window, event_loop) = {
@@ -81,8 +80,11 @@ pub fn main2() {
         //gl.enable(glow::BLEND);
         gl.enable(DEBUG_OUTPUT);
 
-        let width = 300;
-        let height = 300;
+        let width = 1920;
+        let height = 1080;
+
+        let webcam = setup_webcam(width, height).unwrap();
+
 
         let program = gl.create_program().expect("Cannot create program");
 
@@ -139,7 +141,14 @@ pub fn main2() {
         let texture = gl.create_texture().expect("Cannot create texture");
         gl.active_texture(TEXTURE0);
         gl.bind_texture(glow::TEXTURE_2D, Some(texture));
-        gl.tex_storage_2d(glow::TEXTURE_2D, 1, glow::RGBA8, width, height);
+        gl.tex_storage_2d(glow::TEXTURE_2D, 1, glow::RGBA8, width as i32, height as i32);
+
+        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::NEAREST_MIPMAP_LINEAR.try_into().unwrap());
+        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::NEAREST.try_into().unwrap());
+        
+        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::REPEAT.try_into().unwrap());
+        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::REPEAT.try_into().unwrap());
+
         println!("{}", gl.get_error());
         /*let data = vec![120u8; width as usize * height as usize * 4];
         gl.tex_image_2d(
@@ -198,7 +207,7 @@ pub fn main2() {
             ident: None,
         };
 
-        fill_cuda_surface(&mut surface, width as usize, height as usize, 255, 0, 0).unwrap();
+        fill_cuda_surface(&mut surface, width as usize, height as usize, 255, 120, 120).unwrap();
         device.stream().sync().unwrap();
 
         //buf.write(&vec![120u8; width as usize * height as usize * 4]);
@@ -223,15 +232,18 @@ pub fn main2() {
         use glutin::event::{Event, WindowEvent};
         use glutin::event_loop::ControlFlow;
 
+        if &webcam.format().unwrap().fourcc.repr != b"MJPG" {
+            println!("Only MJPG is supported!");
+            return
+        }
+
         event_loop.run(move |event, _, control_flow| {
-            //*control_flow = ControlFlow::Wait;
+
+            let frame_time = Instant::now();
 
             let (raw_data, _) = stream.next().unwrap();
 
-            if &webcam.format().unwrap().fourcc.repr != b"MJPG" {
-                println!("Only MJPG is supported!");
-                *control_flow = ControlFlow::Exit
-            }
+
 
             /*let raw_data = match &webcam.format().unwrap().fourcc.repr {
                 b"RGB3" => raw_data.to_vec(),
@@ -243,8 +255,30 @@ pub fn main2() {
             // use interleaved directly and write therefore to surface?
             decoder.decode_rgb(raw_data).unwrap();
             let channels = decoder.channels.as_ref().unwrap();
-            //interleave_rgb(&mut surface, &channels[0], &channels[1], &channels[2], width as usize, height as usize).unwrap();
-            //fill_cuda_surface(&mut surface, width as usize, height as usize).unwrap();
+
+            /*let channel0 = channels[0].read();
+            let channel1 = channels[1].read();
+            let channel2 = channels[2].read();
+        
+            let file = std::fs::File::create("cat_798x532.ppm").unwrap();
+            let mut writer = std::io::BufWriter::new(file);
+            writer.write(format!("P6\n{} {}\n255\n", width, height).as_bytes()).unwrap();
+        
+            for row in 0..height {
+                let row = row as usize;
+                for col in 0..width {
+                    let col = col as usize;
+                    writer.write(&[
+                        channel0[row * width as usize + col],
+                        channel1[row * width as usize + col],
+                        channel2[row * width as usize + col],
+                    ]).unwrap();
+                }
+            }*/
+            
+            interleave_rgb(&mut surface, &channels[0], &channels[1], &channels[2], width as usize, height as usize).unwrap();
+            device.stream().sync().unwrap();
+            //fill_cuda_surface(&mut surface, width as usize, height as usize, fastrand::u8(0..=255), fastrand::u8(0..=255), fastrand::u8(0..=255)).unwrap();
 
 
             gl.clear_color(0.1, 0.2, 0.3, 0.3);
@@ -260,11 +294,17 @@ pub fn main2() {
             let uniform_location = gl.get_uniform_location(program, "tex");
             gl.uniform_1_i32(uniform_location.as_ref(), 0);
 
-            gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 5);
+            gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
             //gl.draw_elements(glow::TRIANGLES, 6, glow::UNSIGNED_INT, 0);
 
             window.swap_buffers().unwrap();
             gl.use_program(None);
+
+
+            println!(
+                "single frame: {}ms",
+                frame_time.elapsed().as_millis()
+            );
 
             match event {
                 Event::LoopDestroyed => {
