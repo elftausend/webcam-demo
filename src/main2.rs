@@ -1,15 +1,66 @@
-use std::mem::size_of;
+use std::{io, mem::size_of};
 
 use custos::{
-    cuda::{launch_kernel, CUDAPtr, api::CUstream},
+    cuda::{api::CUstream, launch_kernel, CUDAPtr},
     flag::AllocFlag,
     prelude::CUBuffer,
-    CUDA,
+    CUDA, static_api::static_cuda,
 };
 use glow::*;
+use v4l::{
+    buffer::Type,
+    io::traits::CaptureStream,
+    prelude::MmapStream,
+    video::{capture::Parameters, Capture},
+    Device, Format, FourCC,
+};
+
+pub fn setup_webcam(
+    width: u32,
+    height: u32,
+) -> Result<Device, Box<dyn std::error::Error + Send + Sync>> {
+    let path = "/dev/video0";
+    println!("Using device: {}\n", path);
+
+    // Allocate 4 buffers by default
+    let buffer_count = 4;
+
+    let mut format: Format;
+    let params: Parameters;
+
+    let dev = Device::with_path(path)?;
+
+    //format = dev.format()?;
+    format = Format::new(width, height, FourCC::new(b"RGB3"));
+    println!("format: {format}");
+    params = dev.params()?;
+
+    // try RGB3 first
+    format.fourcc = FourCC::new(b"RGB3");
+    format = dev.set_format(&format)?;
+
+    if format.fourcc != FourCC::new(b"RGB3") {
+        // fallback to Motion-JPEG
+        format.fourcc = FourCC::new(b"MJPG");
+        format = dev.set_format(&format)?;
+
+        if format.fourcc != FourCC::new(b"MJPG") {
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                "neither RGB3 nor MJPG supported by the device, but required by this example!",
+            ))?;
+        }
+    }
+
+    println!("Active format:\n{}", format);
+    println!("Active parameters:\n{}", params);
+
+    Ok(dev)
+}
 
 pub fn main2() {
-    let device = CUDA::new(0).unwrap();
+    let webcam = setup_webcam(640, 480).unwrap();
+    let device = static_cuda();
     unsafe {
         let (gl, shader_version, window, event_loop) = {
             let event_loop = glutin::event_loop::EventLoop::new();
@@ -111,7 +162,6 @@ pub fn main2() {
             glow::TEXTURE_2D,
             CU_GRAPHICS_REGISTER_FLAGS_SURFACE_LDST,
         );
-        
 
         let status = cuGraphicsMapResources(1, &mut cuda_resource, device.stream().0);
         if status != 0 {
@@ -127,10 +177,8 @@ pub fn main2() {
         let desc = CUDA_RESOURCE_DESC {
             resType: CUresourcetype::CU_RESOURCE_TYPE_ARRAY,
             res: CUDA_RESOURCE_DESC_st__bindgen_ty_1 {
-                array: CUDA_RESOURCE_DESC_st__bindgen_ty_1__bindgen_ty_1 {
-                    hArray: cuda_array
-                }
-            } ,
+                array: CUDA_RESOURCE_DESC_st__bindgen_ty_1__bindgen_ty_1 { hArray: cuda_array },
+            },
             flags: 0,
         };
         let mut cuda_surface = 0;
@@ -139,7 +187,7 @@ pub fn main2() {
             panic!("Cannot create surface");
         }
 
-        let buf: CUBuffer<u8> = CUBuffer {
+        let mut surface: CUBuffer<u8> = CUBuffer {
             ptr: CUDAPtr {
                 ptr: cuda_surface,
                 flag: AllocFlag::Wrapper,
@@ -150,29 +198,7 @@ pub fn main2() {
             ident: None,
         };
 
-        let src = r#"
-            extern "C" __global__ void writeToSurface(cudaSurfaceObject_t target, int width, int height) {
-                unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
-                unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
-            
-                if (x < width && y < height) {
-                    uchar4 data = make_uchar4(0xff, 0x00, 0x00, 0xff);
-                    surf2Dwrite(data, target, x * sizeof(uchar4), y);
-                }
-            }
-        "#;
-
-        launch_kernel(
-            &device,
-            [256, 256, 1],
-            [16, 16, 1],
-            0,
-            src,
-            "writeToSurface",
-            &[&buf, &(width as usize), &(height as usize)],
-        )
-        .unwrap();
-
+        fill_cuda_surface(&mut surface, width as usize, height as usize, 255, 0, 0).unwrap();
         device.stream().sync().unwrap();
 
         //buf.write(&vec![120u8; width as usize * height as usize * 4]);
@@ -190,59 +216,80 @@ pub fn main2() {
 
         gl.bind_texture(glow::TEXTURE_2D, None);
 
+        let mut decoder = jpeg_decoder::JpegDecoder::new(width as usize, height as usize).unwrap();
+
+        let mut stream = MmapStream::with_buffers(&webcam, Type::VideoCapture, 4).unwrap();
         // We handle events differently between targets
-        {
-            use glutin::event::{Event, WindowEvent};
-            use glutin::event_loop::ControlFlow;
+        use glutin::event::{Event, WindowEvent};
+        use glutin::event_loop::ControlFlow;
 
-            event_loop.run(move |event, _, control_flow| {
-                //*control_flow = ControlFlow::Wait;
+        event_loop.run(move |event, _, control_flow| {
+            //*control_flow = ControlFlow::Wait;
 
-                gl.clear_color(0.1, 0.2, 0.3, 0.3);
+            let (raw_data, _) = stream.next().unwrap();
 
-                //gl.enable(glow::TEXTURE_2D);
+            if &webcam.format().unwrap().fourcc.repr != b"MJPG" {
+                println!("Only MJPG is supported!");
+                *control_flow = ControlFlow::Exit
+            }
 
-                gl.clear(glow::COLOR_BUFFER_BIT);
-
-                gl.bind_texture(glow::TEXTURE_2D, Some(texture));
-                gl.bind_vertex_array(Some(vertex_array));
-                gl.use_program(Some(program));
-                gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
-                let uniform_location = gl.get_uniform_location(program, "tex");
-                gl.uniform_1_i32(uniform_location.as_ref(), 0);
-
-                gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 5);
-                //gl.draw_elements(glow::TRIANGLES, 6, glow::UNSIGNED_INT, 0);
-
-                window.swap_buffers().unwrap();
-                gl.use_program(None);
-
-                match event {
-                    Event::LoopDestroyed => {
-                        return;
-                    }
-                    Event::MainEventsCleared => {
-                        window.window().request_redraw();
-                    }
-                    Event::RedrawRequested(_) => {}
-                    Event::WindowEvent { ref event, .. } => match event {
-                        WindowEvent::Resized(physical_size) => {
-                            window.resize(*physical_size);
-                        }
-                        WindowEvent::CloseRequested => {
-                            gl.delete_program(program);
-                            gl.delete_vertex_array(vertex_array);
-                            *control_flow = ControlFlow::Exit
-                        }
-                        _ => (),
-                    },
-                    _ => (),
+            /*let raw_data = match &webcam.format().unwrap().fourcc.repr {
+                b"RGB3" => raw_data.to_vec(),
+                b"MJPG" => {
+                    todo!()
                 }
-            });
-        }
+            };*/
+
+            // use interleaved directly and write therefore to surface?
+            decoder.decode_rgb(raw_data).unwrap();
+            let channels = decoder.channels.as_ref().unwrap();
+            //interleave_rgb(&mut surface, &channels[0], &channels[1], &channels[2], width as usize, height as usize).unwrap();
+            //fill_cuda_surface(&mut surface, width as usize, height as usize).unwrap();
+
+
+            gl.clear_color(0.1, 0.2, 0.3, 0.3);
+
+            //gl.enable(glow::TEXTURE_2D);
+
+            gl.clear(glow::COLOR_BUFFER_BIT);
+
+            gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+            gl.bind_vertex_array(Some(vertex_array));
+            gl.use_program(Some(program));
+            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
+            let uniform_location = gl.get_uniform_location(program, "tex");
+            gl.uniform_1_i32(uniform_location.as_ref(), 0);
+
+            gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 5);
+            //gl.draw_elements(glow::TRIANGLES, 6, glow::UNSIGNED_INT, 0);
+
+            window.swap_buffers().unwrap();
+            gl.use_program(None);
+
+            match event {
+                Event::LoopDestroyed => {
+                    return;
+                }
+                Event::MainEventsCleared => {
+                    window.window().request_redraw();
+                }
+                Event::RedrawRequested(_) => {}
+                Event::WindowEvent { ref event, .. } => match event {
+                    WindowEvent::Resized(physical_size) => {
+                        window.resize(*physical_size);
+                    }
+                    WindowEvent::CloseRequested => {
+                        gl.delete_program(program);
+                        gl.delete_vertex_array(vertex_array);
+                        *control_flow = ControlFlow::Exit
+                    }
+                    _ => (),
+                },
+                _ => (),
+            }
+        });
     }
 }
-
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -268,6 +315,8 @@ pub enum CUresourcetype_enum {
     CU_RESOURCE_TYPE_LINEAR = 2,
     CU_RESOURCE_TYPE_PITCH2D = 3,
 }
+use crate::{jpeg_decoder, videotex::{fill_cuda_surface, interleave_rgb}};
+
 pub use self::CUresourcetype_enum as CUresourcetype;
 
 /*#[repr(C)]
@@ -305,8 +354,6 @@ pub union CUDA_RESOURCE_DESC_st__bindgen_ty_1 {
 pub struct CUDA_RESOURCE_DESC_st__bindgen_ty_1__bindgen_ty_2 {
     pub hMipmappedArray: cuda_driver_sys::CUmipmappedArray,
 }
-
-
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Hash, PartialOrd, Ord, PartialEq, Eq)]

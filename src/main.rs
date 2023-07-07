@@ -1,6 +1,7 @@
 mod cu_filter;
 mod jpeg_decoder;
 mod main2;
+mod videotex;
 
 use std::io;
 use std::sync::{mpsc, RwLock};
