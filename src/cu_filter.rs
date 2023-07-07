@@ -87,6 +87,7 @@ pub fn correlate_cu_out(
 
     const THREADS: u32 = 8;
 
+    // TODO: use inp_rows and inp_cols (black border)
     let max_down = padded_rows - filter_rows - y_padding;
     let max_right = padded_cols - filter_cols - x_padding;
 

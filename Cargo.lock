@@ -1071,9 +1071,6 @@ dependencies = [
 [[package]]
 name = "nvjpeg-sys"
 version = "0.1.0"
-dependencies = [
- "custos",
-]
 
 [[package]]
 name = "objc"
