@@ -1,4 +1,4 @@
-use std::{io::{self, Write}, mem::size_of, time::Instant};
+use std::{io::{self, Write}, mem::size_of, time::Instant, thread, sync::mpsc};
 
 use custos::{
     cuda::{api::CUstream, launch_kernel, CUDAPtr},
@@ -82,9 +82,6 @@ pub fn main2() {
 
         let width = 1920;
         let height = 1080;
-
-        let webcam = setup_webcam(width, height).unwrap();
-
 
         let program = gl.create_program().expect("Cannot create program");
 
@@ -227,23 +224,47 @@ pub fn main2() {
 
         let mut decoder = jpeg_decoder::JpegDecoder::new(width as usize, height as usize).unwrap();
 
-        let mut stream = MmapStream::with_buffers(&webcam, Type::VideoCapture, 4).unwrap();
         // We handle events differently between targets
         use glutin::event::{Event, WindowEvent};
         use glutin::event_loop::ControlFlow;
+
+        
+        let (tx, rx) = kanal::unbounded();
+
+        let webcam = setup_webcam(width, height).unwrap();
 
         if &webcam.format().unwrap().fourcc.repr != b"MJPG" {
             println!("Only MJPG is supported!");
             return
         }
 
+        let mut stream = MmapStream::with_buffers(&webcam, Type::VideoCapture, 4).unwrap();
+
+        let (raw_data, _) = stream.next().unwrap();
+        tx.send(raw_data.to_vec()).unwrap();
+
+        let mut last = raw_data.to_vec();
+        thread::spawn(move || {
+            let mut raw_data;
+            loop {
+                (raw_data, _) = stream.next().unwrap();
+                tx.send(raw_data.to_vec()).unwrap();
+            }
+
+        });
+
+        
         event_loop.run(move |event, _, control_flow| {
 
             let frame_time = Instant::now();
 
-            let (raw_data, _) = stream.next().unwrap();
-
-
+            match rx.try_recv() {
+                Ok(new) => if let Some(new) = new {
+                    last = new
+                } ,
+                Err(_) => {},
+            }            
+            // let raw_data = &rx.recv().unwrap();
 
             /*let raw_data = match &webcam.format().unwrap().fourcc.repr {
                 b"RGB3" => raw_data.to_vec(),
@@ -253,7 +274,7 @@ pub fn main2() {
             };*/
 
             // use interleaved directly and write therefore to surface?
-            decoder.decode_rgb(raw_data).unwrap();
+            decoder.decode_rgb(&last).unwrap();
             let channels = decoder.channels.as_ref().unwrap();
 
             /*let channel0 = channels[0].read();

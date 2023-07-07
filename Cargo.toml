@@ -14,3 +14,4 @@ custos = { path = "../custos", default-features=false, features=["cuda", "static
 nvjpeg-sys = { path = "../nvjpeg-rs/nvjpeg-sys" }
 cuda-driver-sys = "0.3.0"
 fastrand = "2.0.0"
+kanal = "0.1.0-pre8"
