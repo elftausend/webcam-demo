@@ -187,7 +187,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         let mut channel0 = vec![0; height as usize * width as usize];
                         correlate_fully_u8(
                             &res[0],
-                            &filter.read(),
                             &mut channel0,
                             height as usize,
                             width as usize,
@@ -199,7 +198,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         let mut channel1 = vec![0; height as usize * width as usize];
                         correlate_fully_u8(
                             &res[1],
-                            &filter.read(),
                             &mut channel1,
                             height as usize,
                             width as usize,
@@ -211,7 +209,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         let mut channel2 = vec![0; height as usize * width as usize];
                         correlate_fully_u8(
                             &res[2],
-                            &filter.read(),
                             &mut channel2,
                             height as usize,
                             width as usize,

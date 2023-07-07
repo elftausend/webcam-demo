@@ -1,12 +1,20 @@
-use std::{io::{self, Write}, mem::size_of, time::Instant, thread, sync::mpsc};
+use std::{
+    io::{self, Write},
+    mem::size_of,
+    sync::mpsc,
+    thread,
+    time::Instant,
+};
 
 use custos::{
     cuda::{api::CUstream, launch_kernel, CUDAPtr},
     flag::AllocFlag,
     prelude::CUBuffer,
-    CUDA, static_api::static_cuda,
+    static_api::static_cuda,
+    CUDA,
 };
 use glow::*;
+use nvjpeg_sys::cu_padding;
 use v4l::{
     buffer::Type,
     io::traits::CaptureStream,
@@ -64,10 +72,11 @@ pub fn main2() {
         let (gl, shader_version, window, event_loop) = {
             let event_loop = glutin::event_loop::EventLoop::new();
             let window_builder = glutin::window::WindowBuilder::new()
-                .with_title("Hello triangle!")
+                .with_title("Cam")
+                .with_resizable(false)
                 .with_inner_size(glutin::dpi::LogicalSize::new(1024.0, 768.0));
             let window = glutin::ContextBuilder::new()
-                .with_vsync(true)
+                .with_vsync(false)
                 .build_windowed(window_builder, &event_loop)
                 .unwrap()
                 .make_current()
@@ -138,13 +147,35 @@ pub fn main2() {
         let texture = gl.create_texture().expect("Cannot create texture");
         gl.active_texture(TEXTURE0);
         gl.bind_texture(glow::TEXTURE_2D, Some(texture));
-        gl.tex_storage_2d(glow::TEXTURE_2D, 1, glow::RGBA8, width as i32, height as i32);
+        gl.tex_storage_2d(
+            glow::TEXTURE_2D,
+            1,
+            glow::RGBA8,
+            width as i32,
+            height as i32,
+        );
 
-        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::NEAREST_MIPMAP_LINEAR.try_into().unwrap());
-        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::NEAREST.try_into().unwrap());
-        
-        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::REPEAT.try_into().unwrap());
-        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::REPEAT.try_into().unwrap());
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_MIN_FILTER,
+            glow::NEAREST_MIPMAP_LINEAR.try_into().unwrap(),
+        );
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_MAG_FILTER,
+            glow::NEAREST.try_into().unwrap(),
+        );
+
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_WRAP_S,
+            glow::REPEAT.try_into().unwrap(),
+        );
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_WRAP_T,
+            glow::REPEAT.try_into().unwrap(),
+        );
 
         println!("{}", gl.get_error());
         /*let data = vec![120u8; width as usize * height as usize * 4];
@@ -228,14 +259,13 @@ pub fn main2() {
         use glutin::event::{Event, WindowEvent};
         use glutin::event_loop::ControlFlow;
 
-        
         let (tx, rx) = kanal::unbounded();
 
         let webcam = setup_webcam(width, height).unwrap();
 
         if &webcam.format().unwrap().fourcc.repr != b"MJPG" {
             println!("Only MJPG is supported!");
-            return
+            return;
         }
 
         let mut stream = MmapStream::with_buffers(&webcam, Type::VideoCapture, 4).unwrap();
@@ -244,89 +274,39 @@ pub fn main2() {
         tx.send(raw_data.to_vec()).unwrap();
 
         let mut last = raw_data.to_vec();
+        let mut updated = true;
         thread::spawn(move || {
             let mut raw_data;
             loop {
                 (raw_data, _) = stream.next().unwrap();
-                tx.send(raw_data.to_vec()).unwrap();
+                tx.send(raw_data.to_vec()).unwrap_or_default();
             }
-
         });
 
-        
+        let mut count = 0;
+
+        let filter_rows = 16;
+        let filter_cols = 16;
+
+        let filter = custos::buf![1. / (filter_rows*filter_cols) as f32; filter_rows * filter_cols]
+            .to_cuda();
+
+        //let mut channel0 = custos::buf![0; (height as usize - filter_rows) * (width as usize - filter_cols)].to_cuda();
+        let mut channel0_out = custos::buf![0; width as usize * height as usize].to_cuda();
+        let mut channel1_out = custos::buf![0; width as usize * height as usize].to_cuda();
+        let mut channel2_out = custos::buf![0; width as usize * height as usize].to_cuda();
+
+        let mut channel0_padded =
+            custos::buf![0; (height as usize + 2*(filter_rows -1)) * (width as usize + 2*(filter_cols -1))]
+                .to_cuda();
+        let mut channel1_padded =
+            custos::buf![0; (height as usize + 2*(filter_rows -1)) * (width as usize + 2*(filter_cols -1))]
+                .to_cuda();
+        let mut channel2_padded =
+            custos::buf![0; (height as usize + 2*(filter_rows -1)) * (width as usize + 2*(filter_cols -1))]
+                .to_cuda();
+
         event_loop.run(move |event, _, control_flow| {
-
-            let frame_time = Instant::now();
-
-            match rx.try_recv() {
-                Ok(new) => if let Some(new) = new {
-                    last = new
-                } ,
-                Err(_) => {},
-            }            
-            // let raw_data = &rx.recv().unwrap();
-
-            /*let raw_data = match &webcam.format().unwrap().fourcc.repr {
-                b"RGB3" => raw_data.to_vec(),
-                b"MJPG" => {
-                    todo!()
-                }
-            };*/
-
-            // use interleaved directly and write therefore to surface?
-            decoder.decode_rgb(&last).unwrap();
-            let channels = decoder.channels.as_ref().unwrap();
-
-            /*let channel0 = channels[0].read();
-            let channel1 = channels[1].read();
-            let channel2 = channels[2].read();
-        
-            let file = std::fs::File::create("cat_798x532.ppm").unwrap();
-            let mut writer = std::io::BufWriter::new(file);
-            writer.write(format!("P6\n{} {}\n255\n", width, height).as_bytes()).unwrap();
-        
-            for row in 0..height {
-                let row = row as usize;
-                for col in 0..width {
-                    let col = col as usize;
-                    writer.write(&[
-                        channel0[row * width as usize + col],
-                        channel1[row * width as usize + col],
-                        channel2[row * width as usize + col],
-                    ]).unwrap();
-                }
-            }*/
-            
-            interleave_rgb(&mut surface, &channels[0], &channels[1], &channels[2], width as usize, height as usize).unwrap();
-            device.stream().sync().unwrap();
-            //fill_cuda_surface(&mut surface, width as usize, height as usize, fastrand::u8(0..=255), fastrand::u8(0..=255), fastrand::u8(0..=255)).unwrap();
-
-
-            gl.clear_color(0.1, 0.2, 0.3, 0.3);
-
-            //gl.enable(glow::TEXTURE_2D);
-
-            gl.clear(glow::COLOR_BUFFER_BIT);
-
-            gl.bind_texture(glow::TEXTURE_2D, Some(texture));
-            gl.bind_vertex_array(Some(vertex_array));
-            gl.use_program(Some(program));
-            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
-            let uniform_location = gl.get_uniform_location(program, "tex");
-            gl.uniform_1_i32(uniform_location.as_ref(), 0);
-
-            gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
-            //gl.draw_elements(glow::TRIANGLES, 6, glow::UNSIGNED_INT, 0);
-
-            window.swap_buffers().unwrap();
-            gl.use_program(None);
-
-
-            println!(
-                "single frame: {}ms",
-                frame_time.elapsed().as_millis()
-            );
-
             match event {
                 Event::LoopDestroyed => {
                     return;
@@ -334,7 +314,159 @@ pub fn main2() {
                 Event::MainEventsCleared => {
                     window.window().request_redraw();
                 }
-                Event::RedrawRequested(_) => {}
+                Event::RedrawRequested(_) => {
+                    let frame_time = Instant::now();
+
+                    // let raw_data = &rx.recv().unwrap();
+
+                    /*let raw_data = match &webcam.format().unwrap().fourcc.repr {
+                        b"RGB3" => raw_data.to_vec(),
+                        b"MJPG" => {
+                            todo!()
+                        }
+                    };*/
+
+                    // use interleaved directly and write therefore to surface?
+                    if updated {
+                        decoder.decode_rgb(&last).unwrap();
+                    }
+                    let channels = decoder.channels.as_ref().unwrap();
+
+                    /*let channel0 = channels[0].read();
+                    let channel1 = channels[1].read();
+                    let channel2 = channels[2].read();
+
+                    let file = std::fs::File::create("cat_798x532.ppm").unwrap();
+                    let mut writer = std::io::BufWriter::new(file);
+                    writer.write(format!("P6\n{} {}\n255\n", width, height).as_bytes()).unwrap();
+
+                    for row in 0..height {
+                        let row = row as usize;
+                        for col in 0..width {
+                            let col = col as usize;
+                            writer.write(&[
+                                channel0[row * width as usize + col],
+                                channel1[row * width as usize + col],
+                                channel2[row * width as usize + col],
+                            ]).unwrap();
+                        }
+                    }*/
+
+                    if updated {
+                        /* 
+                        let res = decoder
+                            .channels
+                            .as_ref()
+                            .unwrap()
+                            .iter()
+                            .map(|x| x.read_to_vec())
+                            .collect::<Vec<Vec<u8>>>();
+
+                        let mut channel0: Vec<u8> = vec![0; height as usize * width as usize];
+                        correlate_fully_u8(
+                            &res[0],
+                            &mut channel0,
+                            height as usize,
+                            width as usize,
+                            filter_rows,
+                            filter_cols,
+                        );
+                        //correlate_valid_mut(&res[0], (height as usize, width as usize), &filter.read(), (filter_rows, filter_cols), &mut channel0);
+
+                        let mut channel1 = vec![0; height as usize * width as usize];
+                        correlate_fully_u8(
+                            &res[1],
+                            &mut channel1,
+                            height as usize,
+                            width as usize,
+                            filter_rows,
+                            filter_cols,
+                        );
+                        //correlate_valid_mut(&res[1], (height as usize, width as usize), &filter.read(), (filter_rows, filter_cols), &mut channel1);
+
+                        let mut channel2 = vec![0; height as usize * width as usize];
+                        correlate_fully_u8(
+                            &res[2],
+                            &mut channel2,
+                            height as usize,
+                            width as usize,
+                            filter_rows,
+                            filter_cols,
+                        );*/
+                        //correlate_valid_mut(&res[2], (height as usize, width as usize), &filter.read(), (filter_rows, filter_cols), &mut channel2);
+
+                        cu_padding(&channels[0], &mut channel0_padded, height as usize, width as usize, filter_cols-1, filter_rows-1);
+                        cu_padding(&channels[1], &mut channel1_padded, height as usize, width as usize, filter_cols-1, filter_rows-1);
+                        cu_padding(&channels[2], &mut channel2_padded, height as usize, width as usize, filter_cols-1, filter_rows-1);
+
+                        correlate_cu_out(&channel0_padded, &filter, &mut channel0_out, height as usize, width as usize, filter_rows, filter_cols);
+                        correlate_cu_out(&channel1_padded, &filter, &mut channel1_out, height as usize, width as usize, filter_rows, filter_cols);
+                        correlate_cu_out(&channel2_padded, &filter, &mut channel2_out, height as usize, width as usize, filter_rows, filter_cols);
+
+                        /*correlate_cu(&channels[0], &filter, &mut channel0, height as usize, width as usize, filter_rows, filter_cols);
+                        correlate_cu(&channels[1], &filter, &mut channel1, height as usize, width as usize, filter_rows, filter_cols);
+                        correlate_cu(&channels[2], &filter, &mut channel2, height as usize, width as usize, filter_rows, filter_cols);*/
+
+                        //assert_eq!(channel0_out.read()[..40], channel0[..40]);
+
+                        // make correlate faster, automatic padding!!
+
+                        interleave_rgb(
+                            &mut surface,
+                            &channel0_out,
+                            &channel1_out,
+                            &channel2_out,
+                            width as usize,
+                            height as usize,
+                        )
+                        .unwrap();
+                        //interleave_rgb(&mut surface, &channels[0], &channels[1], &channels[2], width as usize, height as usize).unwrap();
+
+                        //device.stream().sync().unwrap();
+                    }
+
+                    if updated {
+                        println!("Calculating cuda stuff took: {:?}", frame_time.elapsed());
+                    }
+                    //fill_cuda_surface(&mut surface, width as usize, height as usize, fastrand::u8(0..=255), fastrand::u8(0..=255), fastrand::u8(0..=255)).unwrap();
+
+                    gl.clear_color(0.1, 0.2, 0.3, 0.3);
+
+                    //gl.enable(glow::TEXTURE_2D);
+
+                    gl.clear(glow::COLOR_BUFFER_BIT);
+
+                    gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+                    gl.bind_vertex_array(Some(vertex_array));
+                    gl.use_program(Some(program));
+                    gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
+                    let uniform_location = gl.get_uniform_location(program, "tex");
+                    gl.uniform_1_i32(uniform_location.as_ref(), 0);
+
+                    gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+                    //gl.draw_elements(glow::TRIANGLES, 6, glow::UNSIGNED_INT, 0);
+
+                    window.swap_buffers().unwrap();
+                    gl.use_program(None);
+
+                    if count == 100 {
+                        println!("single frame: {}ms, fps: {}", frame_time.elapsed().as_millis(), 1. / frame_time.elapsed().as_secs_f32());
+                        count = 0
+                    }
+
+                    match rx.try_recv() {
+                        Ok(new) => {
+                            if let Some(new) = new {
+                                updated = true;
+                                last = new
+                            } else {
+                                updated = false;
+                            }
+                        }
+                        Err(_) => updated = false
+                    }
+                    count += 1;
+                }
                 Event::WindowEvent { ref event, .. } => match event {
                     WindowEvent::Resized(physical_size) => {
                         window.resize(*physical_size);
@@ -376,7 +508,11 @@ pub enum CUresourcetype_enum {
     CU_RESOURCE_TYPE_LINEAR = 2,
     CU_RESOURCE_TYPE_PITCH2D = 3,
 }
-use crate::{jpeg_decoder, videotex::{fill_cuda_surface, interleave_rgb}};
+use crate::{
+    cu_filter::{add_padding, correlate_cu, correlate_cu_out, correlate_fully_u8},
+    jpeg_decoder,
+    videotex::{fill_cuda_surface, interleave_rgb},
+};
 
 pub use self::CUresourcetype_enum as CUresourcetype;
 
@@ -457,28 +593,20 @@ unsafe fn create_vertex_buffer(
     let indices = [0u32, 2, 1, 0, 3, 2];
 
     // This is a flat array of f32s that are to be interpreted as vec2s.
-    #[rustfmt::skip]
-    let triangle_vertices = [
-        -1f32, -1., 
-        -1., 1., 
-        1., 1., 
-        1., -1.
-    ];
-
-    #[rustfmt::skip]
-    let texcoords = [
-        0f32, 0., 
-        0., 1., 
-        1., 1., 
-        1., 0.
-    ];
-
-    #[rustfmt::skip]
+    /*#[rustfmt::skip]
     let triangle_vertices = [
         -0.5f32, -0.5,
         0.5, -0.5,
         -0.5, 0.5,
         0.5, 0.5,
+    ];*/
+
+    #[rustfmt::skip]
+    let triangle_vertices = [
+        -1.0f32, -1.0,
+        1.0, -1.0,
+        -1.0, 1.0,
+        1.0, 1.0,
     ];
 
     #[rustfmt::skip]
