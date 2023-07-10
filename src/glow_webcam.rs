@@ -362,68 +362,7 @@ pub fn glow_webcam() {
                     }
                     let channels = decoder.channels.as_ref().unwrap();
 
-                    /*let channel0 = channels[0].read();
-                    let channel1 = channels[1].read();
-                    let channel2 = channels[2].read();
-
-                    let file = std::fs::File::create("cat_798x532.ppm").unwrap();
-                    let mut writer = std::io::BufWriter::new(file);
-                    writer.write(format!("P6\n{} {}\n255\n", width, height).as_bytes()).unwrap();
-
-                    for row in 0..height {
-                        let row = row as usize;
-                        for col in 0..width {
-                            let col = col as usize;
-                            writer.write(&[
-                                channel0[row * width as usize + col],
-                                channel1[row * width as usize + col],
-                                channel2[row * width as usize + col],
-                            ]).unwrap();
-                        }
-                    }*/
-
                     if updated {
-                        /* 
-                        let res = decoder
-                            .channels
-                            .as_ref()
-                            .unwrap()
-                            .iter()
-                            .map(|x| x.read_to_vec())
-                            .collect::<Vec<Vec<u8>>>();
-
-                        let mut channel0: Vec<u8> = vec![0; height as usize * width as usize];
-                        correlate_fully_u8(
-                            &res[0],
-                            &mut channel0,
-                            height as usize,
-                            width as usize,
-                            filter_rows,
-                            filter_cols,
-                        );
-                        //correlate_valid_mut(&res[0], (height as usize, width as usize), &filter.read(), (filter_rows, filter_cols), &mut channel0);
-
-                        let mut channel1 = vec![0; height as usize * width as usize];
-                        correlate_fully_u8(
-                            &res[1],
-                            &mut channel1,
-                            height as usize,
-                            width as usize,
-                            filter_rows,
-                            filter_cols,
-                        );
-                        //correlate_valid_mut(&res[1], (height as usize, width as usize), &filter.read(), (filter_rows, filter_cols), &mut channel1);
-
-                        let mut channel2 = vec![0; height as usize * width as usize];
-                        correlate_fully_u8(
-                            &res[2],
-                            &mut channel2,
-                            height as usize,
-                            width as usize,
-                            filter_rows,
-                            filter_cols,
-                        );*/
-                        //correlate_valid_mut(&res[2], (height as usize, width as usize), &filter.read(), (filter_rows, filter_cols), &mut channel2);
 
                         // cu_padding(&channels[0], &mut channel0_padded, height as usize, width as usize, filter_cols-1, filter_rows-1);
                         // cu_padding(&channels[1], &mut channel1_padded, height as usize, width as usize, filter_cols-1, filter_rows-1);
