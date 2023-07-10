@@ -1,20 +1,18 @@
 use std::{
-    io::{self, Write},
+    io,
     mem::size_of,
-    sync::mpsc,
     thread,
     time::Instant,
 };
 
 use custos::{
-    cuda::{api::CUstream, launch_kernel, CUDAPtr},
+    cuda::{api::CUstream, CUDAPtr},
     flag::AllocFlag,
     prelude::CUBuffer,
     static_api::static_cuda,
-    CUDA,
 };
 use glow::*;
-use nvjpeg_sys::cu_padding;
+
 use v4l::{
     buffer::Type,
     io::traits::CaptureStream,
@@ -66,7 +64,7 @@ pub fn setup_webcam(
     Ok(dev)
 }
 
-pub fn main2() {
+pub fn glow_webcam() {
     let device = static_cuda();
     unsafe {
         let (gl, shader_version, window, event_loop) = {
