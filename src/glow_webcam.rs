@@ -1,9 +1,4 @@
-use std::{
-    io,
-    mem::size_of,
-    thread,
-    time::Instant,
-};
+use std::{io, mem::size_of, ptr::null, thread, time::Instant};
 
 use custos::{
     cuda::{api::CUstream, CUDAPtr},
@@ -62,6 +57,12 @@ pub fn setup_webcam(
     println!("Active parameters:\n{}", params);
 
     Ok(dev)
+}
+
+pub fn check_error(value: u32, msg: &str) {
+    if value != 0 {
+        panic!("Error: {value} with message: {msg}")
+    }
 }
 
 pub fn glow_webcam() {
@@ -198,16 +199,16 @@ pub fn glow_webcam() {
             CU_GRAPHICS_REGISTER_FLAGS_SURFACE_LDST,
         );
 
-        let status = cuGraphicsMapResources(1, &mut cuda_resource, device.stream().0);
-        if status != 0 {
-            panic!("Cannot map resources");
-        }
+        check_error(
+            cuGraphicsMapResources(1, &mut cuda_resource, device.stream().0),
+            "Cannot map resources",
+        );
 
         let mut cuda_array: CUarray = std::ptr::null_mut();
-        let status = cuGraphicsSubResourceGetMappedArray(&mut cuda_array, cuda_resource, 0, 0);
-        if status != 0 {
-            panic!("Cannot get mapped array");
-        }
+        check_error(
+            cuGraphicsSubResourceGetMappedArray(&mut cuda_array, cuda_resource, 0, 0),
+            "Cannot get mapped array",
+        );
 
         let desc = CUDA_RESOURCE_DESC {
             resType: CUresourcetype::CU_RESOURCE_TYPE_ARRAY,
@@ -217,10 +218,39 @@ pub fn glow_webcam() {
             flags: 0,
         };
         let mut cuda_surface = 0;
-        let status = cuSurfObjectCreate(&mut cuda_surface, &desc);
-        if status != 0 {
-            panic!("Cannot create surface");
-        }
+        check_error(
+            cuSurfObjectCreate(&mut cuda_surface, &desc),
+            "Cannot create surface",
+        );
+
+        let mut cuda_tex = 0;
+        let tex_desc = CUDA_TEXTURE_DESC {
+            addressMode: [cuda_driver_sys::CUaddress_mode::CU_TR_ADDRESS_MODE_WRAP; 3],
+            filterMode: cuda_driver_sys::CUfilter_mode::CU_TR_FILTER_MODE_LINEAR,
+            flags: 0,
+            maxAnisotropy: 0,
+            mipmapFilterMode: cuda_driver_sys::CUfilter_mode::CU_TR_FILTER_MODE_LINEAR,
+            mipmapLevelBias: 0.0,
+            minMipmapLevelClamp: 0.0,
+            maxMipmapLevelClamp: 0.0,
+            borderColor: [0.0; 4],
+            reserved: [0; 12],
+        };
+        check_error(
+            cuTexObjectCreate(&mut cuda_tex, &desc, &tex_desc, null()),
+            "Cannot create texture object",
+        );
+
+        let mut surface_texture: CUBuffer<u8> = CUBuffer {
+            ptr: CUDAPtr {
+                ptr: cuda_tex,
+                flag: AllocFlag::Wrapper,
+                len: (width * height * 4) as usize,
+                p: std::marker::PhantomData,
+            },
+            device: Some(&device),
+            ident: None,
+        };
 
         let mut surface: CUBuffer<u8> = CUBuffer {
             ptr: CUDAPtr {
@@ -416,6 +446,7 @@ pub fn glow_webcam() {
 
                         // make correlate faster, automatic padding!!
 
+                        // use interleaved directly and write therefore to surface?
                         interleave_rgb(
                             &mut surface,
                             &channel0_out,
@@ -425,6 +456,10 @@ pub fn glow_webcam() {
                             height as usize,
                         )
                         .unwrap();
+
+                        // surface as out?
+                        correlate_cu_tex(&mut surface_texture, &filter, &mut channel0_out, width as usize, height as usize, filter_rows, filter_cols);
+                        
                         //interleave_rgb(&mut surface, &channels[0], &channels[1], &channels[2], width as usize, height as usize).unwrap();
 
                         //device.stream().sync().unwrap();
@@ -497,6 +532,7 @@ pub struct CUarray_st {
 pub type CUarray = *mut CUarray_st;
 
 pub type CUsurfObject = ::std::os::raw::c_ulonglong;
+pub type CUtexObject = ::std::os::raw::c_ulonglong;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -514,9 +550,12 @@ pub enum CUresourcetype_enum {
     CU_RESOURCE_TYPE_PITCH2D = 3,
 }
 use crate::{
-    cu_filter::{add_padding, correlate_cu, correlate_cu_out_auto_pad, correlate_fully_u8, correlate_cu_out_req_pad},
+    cu_filter::{
+        add_padding, correlate_cu, correlate_cu_out_auto_pad, correlate_cu_out_req_pad,
+        correlate_fully_u8,
+    },
     jpeg_decoder,
-    videotex::{fill_cuda_surface, interleave_rgb},
+    videotex::{fill_cuda_surface, interleave_rgb, correlate_cu_tex},
 };
 
 pub use self::CUresourcetype_enum as CUresourcetype;
@@ -564,6 +603,8 @@ pub struct CUDA_RESOURCE_DESC_st__bindgen_ty_1__bindgen_ty_1 {
 }
 
 pub type CUDA_RESOURCE_DESC = CUDA_RESOURCE_DESC_st;
+pub type CUDA_TEXTURE_DESC = cuda_driver_sys::CUDA_TEXTURE_DESC_st;
+pub type CUDA_RESOURCE_VIEW_DESC = cuda_driver_sys::CUDA_RESOURCE_VIEW_DESC_st;
 
 extern "C" {
     fn cuGraphicsGLRegisterImage(
@@ -589,6 +630,13 @@ extern "C" {
     pub fn cuSurfObjectCreate(
         pSurfObject: *mut CUsurfObject,
         pResDesc: *const CUDA_RESOURCE_DESC,
+    ) -> u32;
+
+    pub fn cuTexObjectCreate(
+        pTexObject: *mut CUtexObject,
+        pResDesc: *const CUDA_RESOURCE_DESC,
+        pTexDesc: *const CUDA_TEXTURE_DESC,
+        pResViewDesc: *const CUDA_RESOURCE_VIEW_DESC,
     ) -> u32;
 }
 

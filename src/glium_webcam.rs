@@ -1,5 +1,3 @@
-
-
 use std::io;
 use std::sync::{mpsc, RwLock};
 use std::thread;
@@ -54,9 +52,9 @@ pub fn glium_webcam() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
             if format.fourcc != FourCC::new(b"MJPG") {
                 Err(io::Error::new(
-                io::ErrorKind::Other,
-                "neither RGB3 nor MJPG supported by the device, but required by this example!",
-            ))?;
+                    io::ErrorKind::Other,
+                    "neither RGB3 nor MJPG supported by the device, but required by this example!",
+                ))?;
             }
         }
     }
@@ -106,8 +104,7 @@ pub fn glium_webcam() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // building the index buffer
     let index_buffer =
-        glium::IndexBuffer::new(&display, PrimitiveType::TriangleStrip, &[1u16, 2, 0, 3])
-            .unwrap();
+        glium::IndexBuffer::new(&display, PrimitiveType::TriangleStrip, &[1u16, 2, 0, 3]).unwrap();
 
     // compiling shaders and linking them together
     let program = program!(&display,
@@ -153,8 +150,7 @@ pub fn glium_webcam() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut filtered = buf![0; width as usize * height as usize * 3].to_gpu();
 
         // Setup a buffer stream
-        let mut stream =
-            MmapStream::with_buffers(&dev, Type::VideoCapture, buffer_count).unwrap();
+        let mut stream = MmapStream::with_buffers(&dev, Type::VideoCapture, buffer_count).unwrap();
 
         let mut out = vec![0; width as usize * height as usize * 3];
         loop {
@@ -241,10 +237,8 @@ pub fn glium_webcam() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let data = rx.recv().unwrap();
         let t1 = Instant::now();
 
-        let image = glium::texture::RawImage2d::from_raw_rgb_reversed(
-            &data,
-            (format.width, format.height),
-        );
+        let image =
+            glium::texture::RawImage2d::from_raw_rgb_reversed(&data, (format.width, format.height));
         let opengl_texture = glium::texture::Texture2d::new(&display, image).unwrap();
 
         // building the uniforms
@@ -289,7 +283,6 @@ pub fn glium_webcam() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         );
     });
 }
-
 
 #[test]
 fn test_ptr() {

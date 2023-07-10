@@ -98,7 +98,7 @@ pub fn correlate_cu_out_req_pad(
 
     let src = format!(
         r#"
-        extern "C" __global__ void correlate2(
+        extern "C" __global__ void correlateWithTex(
             unsigned char* input, float* filter, unsigned char* out, 
             int inp_rows, int inp_cols, int filter_rows, 
             int filter_cols, int maxDown, int maxRight, int paddedCols

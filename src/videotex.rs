@@ -1,5 +1,7 @@
 use custos::{cuda::launch_kernel, prelude::CUBuffer};
 
+const CUDA_SOURCE: &'static str = include_str!("./videotex.cu");
+
 pub fn fill_cuda_surface(
     to_fill: &mut CUBuffer<u8>,
     width: usize,
@@ -39,30 +41,63 @@ pub fn interleave_rgb(
     width: usize,
     height: usize,
 ) -> custos::Result<()> {
-    let src = r#"
-        extern "C" __global__ void interleaveRGB(cudaSurfaceObject_t target, int width, int height,
-            unsigned char *R, unsigned char *G, unsigned char *B )
-        {
-            unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
-            unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-            if(x < width && y < height) {       
-                unsigned char valR = R[y * width + x]; 
-                unsigned char valG = G[y * width + x]; 
-                unsigned char valB = B[y * width + x]; 
-                uchar4 data = make_uchar4(valR, valG, valB, 0xff);
-                surf2Dwrite(data, target, x * sizeof(uchar4), height -1- y);
-            }
-        }
-    "#;
 
     launch_kernel(
         target.device(),
         [64, 135, 1],
         [32, 8, 1],
         0,
-        src,
+        CUDA_SOURCE,
         "interleaveRGB",
         &[target, &width, &height, red, green, blue],
     )
+}
+
+pub fn correlate_cu_tex(
+    texture: &CUBuffer<u8>,
+    filter: &CUBuffer<f32>,
+    out: &mut CUBuffer<u8>,
+    inp_rows: usize,
+    inp_cols: usize,
+    filter_rows: usize,
+    filter_cols: usize,
+) {
+    const THREADS: u32 = 8;
+
+    let x_padding = filter_cols - 1;
+    let y_padding = filter_rows - 1;
+
+    let padded_rows = inp_rows + y_padding * 2;
+    let padded_cols: usize = inp_cols + x_padding * 2;
+
+    //let max_down = padded_rows - filter_rows - y_padding;
+    let max_down = inp_rows;
+    //let max_right = padded_cols - filter_cols - x_padding;
+    let max_right = inp_cols;
+
+    // THREADS
+    let grid_x = (padded_rows as f32 / THREADS as f32).ceil() as u32;
+    let grid_y = (padded_cols as f32 / THREADS as f32).ceil() as u32;
+
+    launch_kernel(
+        texture.device(),
+        [grid_x, grid_y, 1],
+        [THREADS, THREADS, 1],
+        0,
+        &CUDA_SOURCE,
+        "correlateWithTex",
+        &[
+            texture,
+            filter,
+            out,
+            &inp_rows,
+            &inp_cols,
+            &filter_rows,
+            &filter_cols,
+            &max_down,
+            &max_right,
+            &padded_cols,
+        ],
+    )
+    .unwrap();
 }
