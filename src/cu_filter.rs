@@ -70,7 +70,7 @@ pub fn correlate_cu(
     .unwrap();
 }
 
-pub fn correlate_cu_out(
+pub fn correlate_cu_out_req_pad(
     input: &CUBuffer<u8>,
     filter: &CUBuffer<f32>,
     out: &mut CUBuffer<u8>,
@@ -83,13 +83,14 @@ pub fn correlate_cu_out(
     let y_padding = filter_rows - 1;
 
     let padded_rows = inp_rows + y_padding * 2;
-    let padded_cols = inp_cols + x_padding * 2;
+    let padded_cols: usize = inp_cols + x_padding * 2;
 
     const THREADS: u32 = 8;
 
-    // TODO: use inp_rows and inp_cols (black border)
-    let max_down = padded_rows - filter_rows - y_padding;
-    let max_right = padded_cols - filter_cols - x_padding;
+    //let max_down = padded_rows - filter_rows - y_padding;
+    let max_down = inp_rows;
+    //let max_right = padded_cols - filter_cols - x_padding;
+    let max_right = inp_cols;
 
     // THREADS
     let grid_x = (padded_rows as f32 / THREADS as f32).ceil() as u32;
@@ -97,7 +98,11 @@ pub fn correlate_cu_out(
 
     let src = format!(
         r#"
-        extern "C" __global__ void correlate2(unsigned char* input, float* filter, unsigned char* out, int inp_rows, int inp_cols, int filter_rows, int filter_cols, int maxDown, int maxRight, int paddedCols) {{
+        extern "C" __global__ void correlate2(
+            unsigned char* input, float* filter, unsigned char* out, 
+            int inp_rows, int inp_cols, int filter_rows, 
+            int filter_cols, int maxDown, int maxRight, int paddedCols
+        ) {{
             int moveDown = blockDim.x * blockIdx.x + threadIdx.x;
             int moveRight = blockDim.y * blockIdx.y + threadIdx.y;
 
@@ -109,9 +114,9 @@ pub fn correlate_cu_out(
             }}
             float sum = 0;
             for (int filterRow = 0; filterRow < filter_rows; filterRow++) {{
-                int inputIdx = moveDown * paddedCols + moveRight + filterRow * paddedCols;  
+                int inputIdx = moveDown * paddedCols + moveRight + filterRow * paddedCols; 
                 for (int filterCol = 0; filterCol < filter_cols; filterCol++) {{
-                    sum += (((float) input[inputIdx + filterCol]))  * filter[filterRow * filter_cols + filterCol];
+                    sum += (((float) input[inputIdx + filterCol]))  * filter[filterRow * filter_cols + filterCol] ;
                 }}
             }}
 
@@ -127,6 +132,87 @@ pub fn correlate_cu_out(
         0,
         &src,
         "correlate2",
+        &[
+            input,
+            filter,
+            out,
+            &inp_rows,
+            &inp_cols,
+            &filter_rows,
+            &filter_cols,
+            &max_down,
+            &max_right,
+            &padded_cols,
+        ],
+    )
+    .unwrap();
+}
+
+pub fn correlate_cu_out_auto_pad(
+    input: &CUBuffer<u8>,
+    filter: &CUBuffer<f32>,
+    out: &mut CUBuffer<u8>,
+    inp_rows: usize,
+    inp_cols: usize,
+    filter_rows: usize,
+    filter_cols: usize,
+) {
+    let y_padding = filter_rows - 1;
+
+    let padded_rows = inp_rows + y_padding * 2;
+    let padded_cols = inp_cols;
+
+    const THREADS: u32 = 8;
+
+    //let max_down = padded_rows - filter_rows - y_padding;
+    let max_down = inp_rows;
+    //let max_right = padded_cols - filter_cols - x_padding;
+    let max_right = inp_cols;
+
+    // THREADS
+    let grid_x = (padded_rows as f32 / THREADS as f32).ceil() as u32;
+    let grid_y = (padded_cols as f32 / THREADS as f32).ceil() as u32;
+
+    let src = format!(
+        r#"
+        extern "C" __global__ void correlateAutoPad(
+            unsigned char* input, float* filter, unsigned char* out, 
+            int inp_rows, int inp_cols, int filter_rows, 
+            int filter_cols, int maxDown, int maxRight, int paddedCols
+        ) {{
+            int moveDown = blockDim.x * blockIdx.x + threadIdx.x;
+            int moveRight = blockDim.y * blockIdx.y + threadIdx.y;
+
+            if (moveDown >= maxDown) {{
+                return;
+            }} 
+            if (moveRight >= maxRight) {{
+                return;
+            }}
+            float sum = 0;
+            for (int filterRow = 0; filterRow < filter_rows; filterRow++) {{
+                int inputIdx = moveDown * paddedCols + moveRight + filterRow * paddedCols; 
+                if (inputIdx >= inp_rows * inp_cols) {{
+                    continue;
+                }}
+
+                for (int filterCol = 0; filterCol < filter_cols; filterCol++) {{
+                    sum += (((float) input[inputIdx + filterCol]))  * filter[filterRow * filter_cols + filterCol] ;
+                }}
+            }}
+
+            out[moveDown * inp_cols + moveRight] = (unsigned char) (sum);
+        }}
+    "#,
+    );
+
+    launch_kernel(
+        input.device(),
+        [grid_x, grid_y, 1],
+        [THREADS, THREADS, 1],
+        0,
+        &src,
+        "correlateAutoPad",
         &[
             input,
             filter,

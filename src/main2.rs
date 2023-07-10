@@ -285,6 +285,8 @@ pub fn main2() {
 
         let mut count = 0;
 
+        // 28x28 - rtx 2060 -> 30fps, 98% gpu utilization
+
         let filter_rows = 16;
         let filter_cols = 16;
 
@@ -395,13 +397,18 @@ pub fn main2() {
                         );*/
                         //correlate_valid_mut(&res[2], (height as usize, width as usize), &filter.read(), (filter_rows, filter_cols), &mut channel2);
 
-                        cu_padding(&channels[0], &mut channel0_padded, height as usize, width as usize, filter_cols-1, filter_rows-1);
-                        cu_padding(&channels[1], &mut channel1_padded, height as usize, width as usize, filter_cols-1, filter_rows-1);
-                        cu_padding(&channels[2], &mut channel2_padded, height as usize, width as usize, filter_cols-1, filter_rows-1);
+                        // cu_padding(&channels[0], &mut channel0_padded, height as usize, width as usize, filter_cols-1, filter_rows-1);
+                        // cu_padding(&channels[1], &mut channel1_padded, height as usize, width as usize, filter_cols-1, filter_rows-1);
+                        // cu_padding(&channels[2], &mut channel2_padded, height as usize, width as usize, filter_cols-1, filter_rows-1);
 
-                        correlate_cu_out(&channel0_padded, &filter, &mut channel0_out, height as usize, width as usize, filter_rows, filter_cols);
-                        correlate_cu_out(&channel1_padded, &filter, &mut channel1_out, height as usize, width as usize, filter_rows, filter_cols);
-                        correlate_cu_out(&channel2_padded, &filter, &mut channel2_out, height as usize, width as usize, filter_rows, filter_cols);
+                        // correlate_cu_out_req_pad(&channel0_padded, &filter, &mut channel0_out, height as usize, width as usize, filter_rows, filter_cols);
+                        // correlate_cu_out_req_pad(&channel1_padded, &filter, &mut channel1_out, height as usize, width as usize, filter_rows, filter_cols);
+                        // correlate_cu_out_req_pad(&channel2_padded, &filter, &mut channel2_out, height as usize, width as usize, filter_rows, filter_cols);
+
+                        // write output directly to surface?
+                        correlate_cu_out_auto_pad(&channels[0], &filter, &mut channel0_out, height as usize, width as usize, filter_rows, filter_cols);
+                        correlate_cu_out_auto_pad(&channels[1], &filter, &mut channel1_out, height as usize, width as usize, filter_rows, filter_cols);
+                        correlate_cu_out_auto_pad(&channels[2], &filter, &mut channel2_out, height as usize, width as usize, filter_rows, filter_cols);
 
                         /*correlate_cu(&channels[0], &filter, &mut channel0, height as usize, width as usize, filter_rows, filter_cols);
                         correlate_cu(&channels[1], &filter, &mut channel1, height as usize, width as usize, filter_rows, filter_cols);
@@ -509,7 +516,7 @@ pub enum CUresourcetype_enum {
     CU_RESOURCE_TYPE_PITCH2D = 3,
 }
 use crate::{
-    cu_filter::{add_padding, correlate_cu, correlate_cu_out, correlate_fully_u8},
+    cu_filter::{add_padding, correlate_cu, correlate_cu_out_auto_pad, correlate_fully_u8, correlate_cu_out_req_pad},
     jpeg_decoder,
     videotex::{fill_cuda_surface, interleave_rgb},
 };
