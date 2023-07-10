@@ -10,24 +10,12 @@ pub fn fill_cuda_surface(
     g: u8,
     b: u8,
 ) -> custos::Result<()> {
-    let src = r#"
-    extern "C" __global__ void writeToSurface(cudaSurfaceObject_t target, int width, int height, char r, char g, char b) {
-        unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
-        unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
-    
-        if (x < width && y < height) {
-            uchar4 data = make_uchar4(r, g, b, 0xff);
-            surf2Dwrite(data, target, x * sizeof(uchar4), y);
-        }
-    }
-"#;
-
     launch_kernel(
         to_fill.device(),
         [256, 256, 1],
         [16, 16, 1],
         0,
-        src,
+        CUDA_SOURCE,
         "writeToSurface",
         &[to_fill, &width, &height, &r, &g, &b],
     )

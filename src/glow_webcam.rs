@@ -322,6 +322,9 @@ pub fn glow_webcam() {
             .to_cuda();
 
         //let mut channel0 = custos::buf![0; (height as usize - filter_rows) * (width as usize - filter_cols)].to_cuda();
+        let mut texture_out = custos::buf![0; width as usize * height as usize * 4].to_cuda();
+
+
         let mut channel0_out = custos::buf![0; width as usize * height as usize].to_cuda();
         let mut channel1_out = custos::buf![0; width as usize * height as usize].to_cuda();
         let mut channel2_out = custos::buf![0; width as usize * height as usize].to_cuda();
@@ -397,7 +400,7 @@ pub fn glow_webcam() {
                         .unwrap();
 
                         // surface as out?
-                        correlate_cu_tex(&mut surface_texture, &filter, &mut channel0_out, width as usize, height as usize, filter_rows, filter_cols);
+                        correlate_cu_tex(&mut surface_texture, &filter, &mut texture_out, width as usize, height as usize, filter_rows, filter_cols);
                         
                         //interleave_rgb(&mut surface, &channels[0], &channels[1], &channels[2], width as usize, height as usize).unwrap();
 

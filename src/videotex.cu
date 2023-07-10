@@ -39,17 +39,25 @@ extern "C"{
             return;
         }  
 
-        float sum = 0;
+        float4 sum = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
         for (int filterRow = 0; filterRow < filter_rows; filterRow++) {
             int inputIdx = moveDown * paddedCols + moveRight + filterRow * paddedCols; 
 
             for (int filterCol = 0; filterCol < filter_cols; filterCol++) {
                 //float4 color = tex2D<float4>(inputTexture, 0, 0);
-                //float4 color = tex2D(inputTexture, (moveRight + filterCol) * sizeof(uchar4), inp_rows -1- (moveDown + filterRow)));
+                float filterVal = filter[filterRow * filter_cols + filterCol];
+
+                float4 color = tex2D<float4>(inputTexture, (moveRight + filterCol) * sizeof(uchar4), inp_rows -1- (moveDown + filterRow));
+                sum.x += color.x * filterVal;
+                sum.y += color.y * filterVal;
+                sum.z += color.z * filterVal;
+
+                //print every color
+                //printf("R: %f, G: %f, B: %f, A: %f\n", color.x, color.y, color.z, color.w);
                 //sum += (((float) input[inputIdx + filterCol]))  * filter[filterRow * filter_cols + filterCol];
             }
         }
-
+        
         //out[moveDown * inp_cols + moveRight] = (unsigned char) (sum);
     }
 }
