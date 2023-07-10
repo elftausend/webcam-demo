@@ -376,9 +376,9 @@ pub fn glow_webcam() {
                         // correlate_cu_out_req_pad(&channel2_padded, &filter, &mut channel2_out, height as usize, width as usize, filter_rows, filter_cols);
 
                         // write output directly to surface?
-                        correlate_cu_out_auto_pad(&channels[0], &filter, &mut channel0_out, height as usize, width as usize, filter_rows, filter_cols);
-                        correlate_cu_out_auto_pad(&channels[1], &filter, &mut channel1_out, height as usize, width as usize, filter_rows, filter_cols);
-                        correlate_cu_out_auto_pad(&channels[2], &filter, &mut channel2_out, height as usize, width as usize, filter_rows, filter_cols);
+                        // correlate_cu_out_auto_pad(&channels[0], &filter, &mut channel0_out, height as usize, width as usize, filter_rows, filter_cols);
+                        // correlate_cu_out_auto_pad(&channels[1], &filter, &mut channel1_out, height as usize, width as usize, filter_rows, filter_cols);
+                        // correlate_cu_out_auto_pad(&channels[2], &filter, &mut channel2_out, height as usize, width as usize, filter_rows, filter_cols);
 
                         /*correlate_cu(&channels[0], &filter, &mut channel0, height as usize, width as usize, filter_rows, filter_cols);
                         correlate_cu(&channels[1], &filter, &mut channel1, height as usize, width as usize, filter_rows, filter_cols);
@@ -389,7 +389,7 @@ pub fn glow_webcam() {
                         // make correlate faster, automatic padding!!
 
                         // use interleaved directly and write therefore to surface?
-                        interleave_rgb(
+                        /*interleave_rgb(
                             &mut surface,
                             &channel0_out,
                             &channel1_out,
@@ -397,12 +397,12 @@ pub fn glow_webcam() {
                             width as usize,
                             height as usize,
                         )
-                        .unwrap();
+                        .unwrap();*/
+
+                        interleave_rgb(&mut surface, &channels[0], &channels[1], &channels[2], width as usize, height as usize).unwrap();
 
                         // surface as out?
-                        correlate_cu_tex(&mut surface_texture, &filter, &mut texture_out, width as usize, height as usize, filter_rows, filter_cols);
-                        
-                        //interleave_rgb(&mut surface, &channels[0], &channels[1], &channels[2], width as usize, height as usize).unwrap();
+                        correlate_cu_tex(&mut surface_texture, &filter, &mut surface, height as usize, width as usize, filter_rows, filter_cols);        
 
                         //device.stream().sync().unwrap();
                     }

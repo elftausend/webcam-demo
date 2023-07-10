@@ -25,7 +25,7 @@ extern "C"{
         }
     }
 
-    __global__ void correlateWithTex(cudaTextureObject_t inputTexture, float* filter, unsigned char* out, 
+    __global__ void correlateWithTex(cudaTextureObject_t inputTexture, float* filter, cudaSurfaceObject_t out, 
             int inp_rows, int inp_cols, int filter_rows, 
             int filter_cols, int maxDown, int maxRight, int paddedCols
     ) {
@@ -44,20 +44,21 @@ extern "C"{
             int inputIdx = moveDown * paddedCols + moveRight + filterRow * paddedCols; 
 
             for (int filterCol = 0; filterCol < filter_cols; filterCol++) {
-                //float4 color = tex2D<float4>(inputTexture, 0, 0);
                 float filterVal = filter[filterRow * filter_cols + filterCol];
 
-                float4 color = tex2D<float4>(inputTexture, (moveRight + filterCol) * sizeof(uchar4), inp_rows -1- (moveDown + filterRow));
+                float4 color = tex2D<float4>(inputTexture, (moveRight + filterCol), inp_rows -1- (moveDown + filterRow));
                 sum.x += color.x * filterVal;
                 sum.y += color.y * filterVal;
                 sum.z += color.z * filterVal;
-
-                //print every color
-                //printf("R: %f, G: %f, B: %f, A: %f\n", color.x, color.y, color.z, color.w);
-                //sum += (((float) input[inputIdx + filterCol]))  * filter[filterRow * filter_cols + filterCol];
             }
         }
-        
-        //out[moveDown * inp_cols + moveRight] = (unsigned char) (sum);
+
+        uchar4 data = make_uchar4((unsigned char) (sum.x * 255.0f), (unsigned char) (sum.y * 255.0f), (unsigned char) (sum.z * 255.0f), 0xff);
+
+        //uchar4 data = make_uchar4(0, 255, 0, 255);
+
+        //printf("R: %d, G: %d, B: %d, A: %d\n", data.x, data.y, data.z, data.w);
+        surf2Dwrite(data, out, moveRight * sizeof(uchar4), inp_rows -1- moveDown);
+
     }
 }
