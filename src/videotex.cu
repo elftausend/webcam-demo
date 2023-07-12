@@ -132,7 +132,7 @@ extern "C"{
             int filter_cols, int maxDown, int maxRight
     ) {
         // make filter size constant?, or use extern shared
-        __shared__ unsigned char sharedInput[32 + 16][32 + 16];
+        __shared__ unsigned char sharedInput[(32 + 16) * (32 + 16)];
 
         int moveDown = blockDim.x * blockIdx.x + threadIdx.x;
         int moveRight = blockDim.y * blockIdx.y + threadIdx.y;
@@ -146,16 +146,20 @@ extern "C"{
 
         // 32 + filter_rows, 32 + filter_cols ==> 32 + 16, 32 + 16, however, theadIdx max is 32
         if (threadIdx.x < 32 && threadIdx.y < 32) {
-            sharedInput[threadIdx.x][threadIdx.y] = input[moveDown * inp_cols + moveRight];
+            sharedInput[threadIdx.x * (blockDim.y + filter_cols) + threadIdx.y] = input[moveDown * inp_cols + moveRight];
+            //sharedInput[threadIdx.x][threadIdx.y] = input[moveDown * inp_cols + moveRight];
             
             if (threadIdx.x < filter_rows) {
-                sharedInput[threadIdx.x + blockDim.x][threadIdx.y] = input[(moveDown + blockDim.x) * inp_cols + moveRight];
+                sharedInput[(threadIdx.x + blockDim.x) * (blockDim.y + filter_cols) + threadIdx.y ] = input[(moveDown + blockDim.x) * inp_cols + moveRight];
+                //sharedInput[threadIdx.x + blockDim.x][threadIdx.y] = input[(moveDown + blockDim.x) * inp_cols + moveRight];
             }
             if (threadIdx.y < filter_cols) {
-                sharedInput[threadIdx.x][threadIdx.y + blockDim.y] = input[moveDown * inp_cols + moveRight + blockDim.y];
+                sharedInput[threadIdx.x * (blockDim.y + filter_cols) + threadIdx.y + blockDim.y] = input[moveDown * inp_cols + moveRight + blockDim.y];
+                //sharedInput[threadIdx.x][threadIdx.y + blockDim.y] = input[moveDown * inp_cols + moveRight + blockDim.y];
             }
             if (threadIdx.x < filter_rows && threadIdx.y < filter_cols) {
-                sharedInput[threadIdx.x + blockDim.x][threadIdx.y + blockDim.y] = input[(moveDown + blockDim.x) * inp_cols + moveRight + blockDim.y];
+                sharedInput[(threadIdx.x + blockDim.x) * (blockDim.y + filter_cols) + threadIdx.y +blockDim.y] = input[(moveDown + blockDim.x) * inp_cols + moveRight + blockDim.y];
+                //sharedInput[threadIdx.x + blockDim.x][threadIdx.y + blockDim.y] = input[(moveDown + blockDim.x) * inp_cols + moveRight + blockDim.y];
             }
 
         }
@@ -168,7 +172,8 @@ extern "C"{
             }
 
             for (int filterCol = 0; filterCol < filter_cols; filterCol++) {
-                sum += ((float) sharedInput[threadIdx.x + filterRow][threadIdx.y + filterCol]) * filterData[filterRow * filter_cols + filterCol];                
+                sum += ((float) sharedInput[(threadIdx.x+filterRow) *(blockDim.y + filter_cols) + threadIdx.y + filterCol ]) * filterData[filterRow * filter_cols + filterCol];
+                //sum += ((float) sharedInput[threadIdx.x + filterRow][threadIdx.y + filterCol]) * filterData[filterRow * filter_cols + filterCol];                
             }
         }
         // printf("sum: %f\n", sum);
