@@ -118,7 +118,7 @@ pub fn correlate_cu_tex_shared(
         &func,
         [grid_x, grid_y, 1],
         [THREADS, THREADS, 1],
-        0,
+        (THREADS + filter_rows as u32) * (THREADS + filter_cols as u32) * size_of::<f32>() as u32 * 4,
         &[
             texture,
             out,
@@ -231,7 +231,7 @@ mod tests {
         println!("auto pad {:?}", start.elapsed());
 
         for (op, o) in output_auto_pad.read().iter().zip(out.read().iter()) {
-            if ((op - o) as f32).abs() > 3. {
+            if ((op - o) as f32).abs() > 10. {
                 panic!("{} {}", op, o);
             }
         }

@@ -322,8 +322,8 @@ pub fn glow_webcam() {
 
         // 28x28 - rtx 2060 -> 30fps, 98% gpu utilization - with padding etc
         // 48x49 => using textures -> ~32ms /frame, 30fps, 98% gpu utilization,
-        let filter_rows = 16;
-        let filter_cols = 16;
+        let filter_rows = 23;
+        let filter_cols = 23;
 
         let filter = custos::buf![1. / (filter_rows*filter_cols) as f32; filter_rows * filter_cols]
             .to_cuda();
@@ -420,11 +420,16 @@ pub fn glow_webcam() {
                             device.stream().sync().unwrap();
                         }*/
 
-                        // correlate_cu_tex(&mut surface_texture, &filter,&mut surface, height as usize, width as usize, filter_rows, filter_cols);
+                        let correlate_now = Instant::now();
+                        
+                        // use __constant__ filter memory as well 
+                        //correlate_cu_tex(&mut surface_texture, &filter,&mut surface, height as usize, width as usize, filter_rows, filter_cols);
 
-                        // use __constant__ filter memory
+                        // uses __constant__ filter memory
                         correlate_cu_tex_shared(&mut surface_texture, &mut surface, height as usize, width as usize, filter_rows, filter_cols);
+                        
                         device.stream().sync().unwrap();
+                        println!("Correlate took: {:?}", correlate_now.elapsed());
                     }
 
                     if updated {

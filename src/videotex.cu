@@ -70,7 +70,8 @@ extern "C"{
             int filter_cols
     ) {
 
-        __shared__ float4 sharedInput[32 + 16][32 + 16];
+        __shared__ float4 sharedInput[32 + 23][32 + 23];
+        // extern __shared__ float4 sharedInput[];
         int moveDown = blockDim.x * blockIdx.x + threadIdx.x;
         int moveRight = blockDim.y * blockIdx.y + threadIdx.y;
 
@@ -82,24 +83,26 @@ extern "C"{
         } 
 
         if (threadIdx.x < 32 && threadIdx.y < 32) {
-
-            // why is order that important for performance?
+            //sharedInput[threadIdx.y * (blockDim.y + filter_cols) + threadIdx.x] = tex2D<float4>(inputTexture, moveRight, moveDown);
             sharedInput[threadIdx.y][threadIdx.x] = tex2D<float4>(inputTexture, moveRight, moveDown);
             
             if (threadIdx.x < filter_rows) {
+                //sharedInput[threadIdx.y * (blockDim.y + filter_cols) + threadIdx.x + blockDim.x] = tex2D<float4>(inputTexture, moveRight, moveDown + blockDim.x);
                 sharedInput[threadIdx.y][threadIdx.x + blockDim.x] = tex2D<float4>(inputTexture, moveRight, moveDown + blockDim.x);
             }
             if (threadIdx.y < filter_cols) {
+                // sharedInput[(threadIdx.y + blockDim.y) * (blockDim.y + filter_cols) + threadIdx.x] = tex2D<float4>(inputTexture, moveRight + blockDim.y, moveDown);
                 sharedInput[threadIdx.y + blockDim.y][threadIdx.x] = tex2D<float4>(inputTexture, moveRight + blockDim.y, moveDown);
             }
             if (threadIdx.x < filter_rows && threadIdx.y < filter_cols) {
+                // sharedInput[(threadIdx.y + blockDim.y) * (blockDim.y + filter_cols) + threadIdx.x + blockDim.x] = tex2D<float4>(inputTexture, moveRight + blockDim.y, moveDown + blockDim.x);
                 sharedInput[threadIdx.y + blockDim.y][threadIdx.x + blockDim.x] = tex2D<float4>(inputTexture, moveRight + blockDim.y, moveDown + blockDim.x);
             }
 
         }
+
         __syncthreads();
 
-    
         float4 sum = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
         for (int filterRow = 0; filterRow < filter_rows; filterRow++) {
             int inputIdx = moveDown * inp_cols + moveRight + filterRow * inp_cols;
@@ -108,7 +111,7 @@ extern "C"{
                 float filterVal = filterData[filterRow * filter_cols + filterCol];
                 //float filterVal = 1.0 / (float) (filter_cols * filter_rows);
 
-                //float4 color = tex2D<float4>(inputTexture, (moveRight + filterCol), inp_rows -1- (moveDown + filterRow));
+                //float4 color = sharedInput[(threadIdx.y + filterCol) * (blockDim.y + filter_cols) + threadIdx.x + filterRow];
                 float4 color = sharedInput[threadIdx.y + filterCol][threadIdx.x + filterRow];
                 sum.x += color.x * filterVal;
                 sum.y += color.y * filterVal;
