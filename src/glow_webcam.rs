@@ -10,7 +10,7 @@ use std::{
 use custos::{
     cuda::{api::CUstream, fn_cache, CUDAPtr},
     flag::AllocFlag,
-    prelude::CUBuffer,
+    prelude::{CUBuffer, CU},
     static_api::static_cuda,
 };
 use glow::*;
@@ -322,8 +322,8 @@ pub fn glow_webcam() {
 
         // 28x28 - rtx 2060 -> 30fps, 98% gpu utilization - with padding etc
         // 48x49 => using textures -> ~32ms /frame, 30fps, 98% gpu utilization,
-        let filter_rows = 48;
-        let filter_cols = 49;
+        let filter_rows = 16;
+        let filter_cols = 16;
 
         let filter = custos::buf![1. / (filter_rows*filter_cols) as f32; filter_rows * filter_cols]
             .to_cuda();
@@ -347,39 +347,7 @@ pub fn glow_webcam() {
             custos::buf![0; (height as usize + 2*(filter_rows -1)) * (width as usize + 2*(filter_cols -1))]
                 .to_cuda();
 
-        let func = fn_cache(
-            surface_texture.device(),
-            CUDA_SOURCE,
-            "correlateWithTexShared",
-        )
-        .unwrap();
-
-
-        let module = surface_texture.device().modules.borrow().get(&func).unwrap().0;
-
-        let filter_var = CString::new("filterData").unwrap();
-
-        let mut size = 0;
-        let mut filter_data_ptr = 0;
-        check_error(
-            cuModuleGetGlobal_v2(
-                &mut filter_data_ptr,
-                &mut size,
-                module,
-                filter_var.as_ptr(),
-            ),
-            "Cannot get global variable",
-        );
-        let mut filter_data_buf: CUBuffer<f32> = CUBuffer {
-            ptr: CUDAPtr {
-                ptr: filter_data_ptr,
-                flag: AllocFlag::Wrapper,
-                len: size as usize / std::mem::size_of::<f32>(),
-                p: std::marker::PhantomData,
-            },
-            device: Some(&surface_texture.device()),
-            ident: None,
-        };
+        let mut filter_data_buf = get_constant_memory(surface_texture.device(), CUDA_SOURCE, "correlateWithTexShared", "filterData");
 
         // writes data to __constant__ filterData memory
         filter_data_buf.write(&filter.read());
@@ -451,7 +419,11 @@ pub fn glow_webcam() {
                             correlate_cu_tex(&mut surface_texture, &filter3x3, &mut surface, height as usize, width as usize, 3, 3); 
                             device.stream().sync().unwrap();
                         }*/
-                        correlate_cu_tex_shared(&mut surface_texture, &filter, &mut surface, height as usize, width as usize, filter_rows, filter_cols);
+
+                        // correlate_cu_tex(&mut surface_texture, &filter,&mut surface, height as usize, width as usize, filter_rows, filter_cols);
+
+                        // use __constant__ filter memory
+                        correlate_cu_tex_shared(&mut surface_texture, &mut surface, height as usize, width as usize, filter_rows, filter_cols);
                         device.stream().sync().unwrap();
                     }
 
@@ -548,7 +520,7 @@ use crate::{
     videotex::{
         correlate_cu_tex, correlate_cu_tex_shared, cuModuleGetGlobal_v2, fill_cuda_surface,
         interleave_rgb, CUDA_SOURCE,
-    },
+    }, get_constant_memory,
 };
 
 pub use self::CUresourcetype_enum as CUresourcetype;

@@ -162,7 +162,7 @@ pub fn correlate_cu_out_auto_pad(
     let padded_rows = inp_rows + y_padding * 2;
     let padded_cols = inp_cols;
 
-    const THREADS: u32 = 8;
+    const THREADS: u32 = 32;
 
     //let max_down = padded_rows - filter_rows - y_padding;
     let max_down = inp_rows;

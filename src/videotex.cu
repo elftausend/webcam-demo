@@ -65,29 +65,53 @@ extern "C"{
 
     __constant__ float filterData[64*64];
 
-    __global__ void correlateWithTexShared(cudaTextureObject_t inputTexture, float* filter, cudaSurfaceObject_t out, 
+    __global__ void correlateWithTexShared(cudaTextureObject_t inputTexture, cudaSurfaceObject_t out, 
             int inp_rows, int inp_cols, int filter_rows, 
-            int filter_cols, int maxDown, int maxRight, int paddedCols
+            int filter_cols
     ) {
+
+        __shared__ float4 sharedInput[32 + 16][32 + 16];
         int moveDown = blockDim.x * blockIdx.x + threadIdx.x;
         int moveRight = blockDim.y * blockIdx.y + threadIdx.y;
 
-        if (moveDown >= maxDown) {
+        if (moveDown >= inp_rows) {
             return;
         } 
-        if (moveRight >= maxRight) {
+        if (moveRight >= inp_cols) {
             return;
-        }  
+        } 
 
+        if (threadIdx.x < 32 && threadIdx.y < 32) {
+            
+            sharedInput[threadIdx.x][threadIdx.y] = tex2D<float4>(inputTexture, moveRight, moveDown);
+            
+            if (threadIdx.x < filter_rows) {
+                sharedInput[threadIdx.x + blockDim.x][threadIdx.y] = tex2D<float4>(inputTexture, moveRight, moveDown + blockDim.x);
+                //sharedInput[threadIdx.x + blockDim.x][threadIdx.y] = input[(moveDown + blockDim.x) * inp_cols + moveRight];
+            }
+            if (threadIdx.y < filter_cols) {
+                sharedInput[threadIdx.x][threadIdx.y + blockDim.y] = tex2D<float4>(inputTexture, moveRight + blockDim.y, moveDown);
+                //sharedInput[threadIdx.x][threadIdx.y + blockDim.y] = input[moveDown * inp_cols + moveRight + blockDim.y];
+            }
+            if (threadIdx.x < filter_rows && threadIdx.y < filter_cols) {
+                sharedInput[threadIdx.x + blockDim.x][threadIdx.y + blockDim.y] = tex2D<float4>(inputTexture, moveRight + blockDim.y, moveDown + blockDim.x);
+                //sharedInput[threadIdx.x + blockDim.x][threadIdx.y + blockDim.y] = input[(moveDown + blockDim.x) * inp_cols + moveRight + blockDim.y];
+            }
+
+        }
+        __syncthreads();
+
+    
         float4 sum = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
         for (int filterRow = 0; filterRow < filter_rows; filterRow++) {
-            int inputIdx = moveDown * paddedCols + moveRight + filterRow * paddedCols; 
-
+            int inputIdx = moveDown * inp_cols + moveRight + filterRow * inp_cols;
+ 
             for (int filterCol = 0; filterCol < filter_cols; filterCol++) {
                 float filterVal = filterData[filterRow * filter_cols + filterCol];
                 //float filterVal = 1.0 / (float) (filter_cols * filter_rows);
 
-                float4 color = tex2D<float4>(inputTexture, (moveRight + filterCol), inp_rows -1- (moveDown + filterRow));
+                //float4 color = tex2D<float4>(inputTexture, (moveRight + filterCol), inp_rows -1- (moveDown + filterRow));
+                float4 color = sharedInput[threadIdx.x + filterRow][threadIdx.y + filterCol];
                 sum.x += color.x * filterVal;
                 sum.y += color.y * filterVal;
                 sum.z += color.z * filterVal;
@@ -99,7 +123,54 @@ extern "C"{
         //uchar4 data = make_uchar4(0, 255, 0, 255);
 
         //printf("R: %d, G: %d, B: %d, A: %d\n", data.x, data.y, data.z, data.w);
-        surf2Dwrite(data, out, moveRight * sizeof(uchar4), inp_rows -1- moveDown);
+        surf2Dwrite(data, out, moveRight * sizeof(uchar4), moveDown);
+    }
 
+    __global__ void correlateShared(unsigned char* input, unsigned char* out, 
+            int inp_rows, int inp_cols, int filter_rows, 
+            int filter_cols, int maxDown, int maxRight
+    ) {
+        // make filter size constant?, or use extern shared
+        __shared__ unsigned char sharedInput[32 + 16][32 + 16];
+
+        int moveDown = blockDim.x * blockIdx.x + threadIdx.x;
+        int moveRight = blockDim.y * blockIdx.y + threadIdx.y;
+
+        if (moveDown >= maxDown) {
+            return;
+        }
+        if (moveRight >= maxRight) {
+            return;
+        }
+
+        // 32 + filter_rows, 32 + filter_cols ==> 32 + 16, 32 + 16, however, theadIdx max is 32
+        if (threadIdx.x < 32 && threadIdx.y < 32) {
+            sharedInput[threadIdx.x][threadIdx.y] = input[moveDown * inp_cols + moveRight];
+            
+            if (threadIdx.x < filter_rows) {
+                sharedInput[threadIdx.x + blockDim.x][threadIdx.y] = input[(moveDown + blockDim.x) * inp_cols + moveRight];
+            }
+            if (threadIdx.y < filter_cols) {
+                sharedInput[threadIdx.x][threadIdx.y + blockDim.y] = input[moveDown * inp_cols + moveRight + blockDim.y];
+            }
+            if (threadIdx.x < filter_rows && threadIdx.y < filter_cols) {
+                sharedInput[threadIdx.x + blockDim.x][threadIdx.y + blockDim.y] = input[(moveDown + blockDim.x) * inp_cols + moveRight + blockDim.y];
+            }
+
+        }
+        __syncthreads();
+        float sum = 0;
+        for (int filterRow = 0; filterRow < filter_rows; filterRow++) {
+            int inputIdx = moveDown * inp_cols + moveRight + filterRow * inp_cols; 
+            if (inputIdx >= inp_rows * inp_cols) {
+                continue;
+            }
+
+            for (int filterCol = 0; filterCol < filter_cols; filterCol++) {
+                sum += ((float) sharedInput[threadIdx.x + filterRow][threadIdx.y + filterCol]) * filterData[filterRow * filter_cols + filterCol];                
+            }
+        }
+        // printf("sum: %f\n", sum);
+        out[moveDown * inp_cols + moveRight] = (unsigned char) (sum);
     }
 }
