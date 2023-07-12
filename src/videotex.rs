@@ -231,7 +231,7 @@ mod tests {
         println!("auto pad {:?}", start.elapsed());
 
         for (op, o) in output_auto_pad.read().iter().zip(out.read().iter()) {
-            if ((*op as f32 - *o as f32)).abs() > 10. {
+            if ((*op as f32 - *o as f32)).abs() > 3. {
                 panic!("{} {}", op, o);
             }
         }
