@@ -9,6 +9,7 @@ mod glium_webcam;
 mod glow_webcam;
 mod jpeg_decoder;
 mod videotex;
+mod correlate_test_kernels;
 
 fn main() {
     if true {
