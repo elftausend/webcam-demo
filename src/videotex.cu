@@ -24,6 +24,7 @@ extern "C"{
             surf2Dwrite(data, target, x * sizeof(uchar4), height -1- y);
         }
     }
+    __constant__ float filterData[64*64];
 
     __global__ void correlateWithTex(cudaTextureObject_t inputTexture, float* filter, cudaSurfaceObject_t out, 
             int inp_rows, int inp_cols, int filter_rows, 
@@ -44,7 +45,7 @@ extern "C"{
             int inputIdx = moveDown * paddedCols + moveRight + filterRow * paddedCols; 
 
             for (int filterCol = 0; filterCol < filter_cols; filterCol++) {
-                float filterVal = filter[filterRow * filter_cols + filterCol];
+                float filterVal = filterData[filterRow * filter_cols + filterCol];
                 // float filterVal = 1.0 / (float) (filter_cols * filter_rows);
 
                 float4 color = tex2D<float4>(inputTexture, (moveRight + filterCol), inp_rows -1- (moveDown + filterRow));
@@ -60,17 +61,13 @@ extern "C"{
 
         //printf("R: %d, G: %d, B: %d, A: %d\n", data.x, data.y, data.z, data.w);
         surf2Dwrite(data, out, moveRight * sizeof(uchar4), inp_rows -1- moveDown);
-
     }
 
-    __constant__ float filterData[64*64];
-
     __global__ void correlateWithTexShared(cudaTextureObject_t inputTexture, cudaSurfaceObject_t out, 
-            int inp_rows, int inp_cols, int filter_rows, 
-            int filter_cols
+            int inp_rows, int inp_cols, int filter_rows, int filter_cols
     ) {
 
-        __shared__ float4 sharedInput[32 + 23][32 + 23];
+        __shared__ float4 sharedInput[8 + 3][32 + 3];
         // extern __shared__ float4 sharedInput[];
         int moveDown = blockDim.x * blockIdx.x + threadIdx.x;
         int moveRight = blockDim.y * blockIdx.y + threadIdx.y;
@@ -82,7 +79,8 @@ extern "C"{
             return;
         } 
 
-        if (threadIdx.x < 32 && threadIdx.y < 32) {
+
+        //if (threadIdx.x < 32 && threadIdx.y < 32) {
             //sharedInput[threadIdx.y * (blockDim.y + filter_cols) + threadIdx.x] = tex2D<float4>(inputTexture, moveRight, moveDown);
             sharedInput[threadIdx.y][threadIdx.x] = tex2D<float4>(inputTexture, moveRight, moveDown);
             
@@ -98,8 +96,7 @@ extern "C"{
                 // sharedInput[(threadIdx.y + blockDim.y) * (blockDim.y + filter_cols) + threadIdx.x + blockDim.x] = tex2D<float4>(inputTexture, moveRight + blockDim.y, moveDown + blockDim.x);
                 sharedInput[threadIdx.y + blockDim.y][threadIdx.x + blockDim.x] = tex2D<float4>(inputTexture, moveRight + blockDim.y, moveDown + blockDim.x);
             }
-
-        }
+        //}
 
         __syncthreads();
 
@@ -113,6 +110,8 @@ extern "C"{
 
                 //float4 color = sharedInput[(threadIdx.y + filterCol) * (blockDim.y + filter_cols) + threadIdx.x + filterRow];
                 float4 color = sharedInput[threadIdx.y + filterCol][threadIdx.x + filterRow];
+                // float4 color = tex2D<float4>(inputTexture, (moveRight + filterCol), (moveDown + filterRow));
+
                 sum.x += color.x * filterVal;
                 sum.y += color.y * filterVal;
                 sum.z += color.z * filterVal;

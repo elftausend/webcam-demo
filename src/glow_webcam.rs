@@ -8,6 +8,7 @@ use std::{
 };
 
 use custos::{
+    buf,
     cuda::{api::CUstream, fn_cache, CUDAPtr},
     flag::AllocFlag,
     prelude::{CUBuffer, CU},
@@ -72,7 +73,7 @@ pub fn check_error(value: u32, msg: &str) {
     }
 }
 
-pub fn glow_webcam() {
+pub fn glow_webcam(args: &Args) {
     let device = static_cuda();
     unsafe {
         let (gl, shader_version, window, event_loop) = {
@@ -322,11 +323,69 @@ pub fn glow_webcam() {
 
         // 28x28 - rtx 2060 -> 30fps, 98% gpu utilization - with padding etc
         // 48x49 => using textures -> ~32ms /frame, 30fps, 98% gpu utilization,
-        let filter_rows = 23;
-        let filter_cols = 23;
+        let filter_rows;
+        let filter_cols;
 
-        let filter = custos::buf![1. / (filter_rows*filter_cols) as f32; filter_rows * filter_cols]
-            .to_cuda();
+        let filter;
+
+        match args.filter {
+            #[rustfmt::skip]
+            Filter::Sharpen => {
+                filter_rows = 3;
+                filter_cols = 3;
+                filter = custos::buf![
+                    0., -1., 0.,
+                    -1., 5., -1.,
+                    0., -1., 0.,
+                ].to_cuda();
+            }
+            Filter::BoxBlur => {
+                filter_rows = 23;
+                filter_cols = 23;
+
+                filter =
+                    custos::buf![1. / (filter_rows*filter_cols) as f32; filter_rows * filter_cols]
+                        .to_cuda();
+            }
+            Filter::Overflow => {
+                filter_rows = 3;
+                filter_cols = 3;
+                filter = custos::buf![
+                    1.; 9
+                ]
+                .to_cuda();
+            }
+            Filter::MarkLight => {
+                filter_rows = 3;
+                filter_cols = 3;
+                filter = custos::buf![args.marklight_intensity; 9].to_cuda();
+            }
+
+            #[rustfmt::skip]
+            Filter::EdgeDetect => {
+                filter_rows = 3;
+                filter_cols = 3;
+                filter = custos::buf![
+                    -1., -1., -1.,
+                    -1., 8., -1.,
+                    -1., -1., -1.,
+                ].to_cuda();
+            }
+            Filter::Test => {
+                filter_rows = 3;
+                filter_cols = 3;
+                filter = custos::buf![
+                    0.14; 9
+                ]
+                .to_cuda();
+            }
+            // could skip calculation(s) afterwards completely
+            Filter::None => {
+                filter_rows = 1;
+                filter_cols = 1;
+                filter = buf![1.; 1].to_cuda()
+            }
+        }
 
         let filter3x3 = custos::buf![1. / 9.; 9].to_cuda();
 
@@ -347,7 +406,22 @@ pub fn glow_webcam() {
             custos::buf![0; (height as usize + 2*(filter_rows -1)) * (width as usize + 2*(filter_cols -1))]
                 .to_cuda();
 
-        let mut filter_data_buf = get_constant_memory(surface_texture.device(), CUDA_SOURCE, "correlateWithTexShared", "filterData");
+        let mut filter_data_buf = get_constant_memory(
+            surface_texture.device(),
+            CUDA_SOURCE,
+            "correlateWithTexShared",
+            "filterData",
+        );
+
+        // writes data to __constant__ filterData memory
+        filter_data_buf.write(&filter.read());
+
+        let mut filter_data_buf = get_constant_memory(
+            surface_texture.device(),
+            CUDA_SOURCE,
+            "correlateWithTex",
+            "filterData",
+        );
 
         // writes data to __constant__ filterData memory
         filter_data_buf.write(&filter.read());
@@ -413,7 +487,7 @@ pub fn glow_webcam() {
                         .unwrap();*/
 
                         interleave_rgb(&mut surface, &channels[0], &channels[1], &channels[2], width as usize, height as usize).unwrap();
-
+                        device.stream().sync().unwrap();
                         // surface as out?
                         /*for _ in 0..50 {
                             correlate_cu_tex(&mut surface_texture, &filter3x3, &mut surface, height as usize, width as usize, 3, 3); 
@@ -421,13 +495,11 @@ pub fn glow_webcam() {
                         }*/
 
                         let correlate_now = Instant::now();
-                        
                         // use __constant__ filter memory as well 
-                        //correlate_cu_tex(&mut surface_texture, &filter,&mut surface, height as usize, width as usize, filter_rows, filter_cols);
+                        // correlate_cu_tex(&mut surface_texture, &filter,&mut surface, height as usize, width as usize, filter_rows, filter_cols);
 
                         // uses __constant__ filter memory
                         correlate_cu_tex_shared(&mut surface_texture, &mut surface, height as usize, width as usize, filter_rows, filter_cols);
-                        
                         device.stream().sync().unwrap();
                         println!("Correlate took: {:?}", correlate_now.elapsed());
                     }
@@ -521,11 +593,12 @@ use crate::{
         add_padding, correlate_cu, correlate_cu_out_auto_pad, correlate_cu_out_req_pad,
         correlate_fully_u8,
     },
-    jpeg_decoder,
+    get_constant_memory, jpeg_decoder,
     videotex::{
         correlate_cu_tex, correlate_cu_tex_shared, cuModuleGetGlobal_v2, fill_cuda_surface,
         interleave_rgb, CUDA_SOURCE,
-    }, get_constant_memory,
+    },
+    Args, Filter,
 };
 
 pub use self::CUresourcetype_enum as CUresourcetype;

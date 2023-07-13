@@ -1,4 +1,4 @@
-use custos::{prelude::CUBuffer, cuda::launch_kernel};
+use custos::{cuda::launch_kernel, prelude::CUBuffer};
 
 pub const CUDA_COR_SOURCE: &'static str = include_str!("./correlate_test_kernels.cu");
 
@@ -71,13 +71,7 @@ pub fn correlate_shared_col(
         0,
         CUDA_COR_SOURCE,
         "correlateSharedCol",
-        &[
-            input,
-            out,
-            &inp_rows,
-            &inp_cols,
-            &filter_cols,
-        ],
+        &[input, out, &inp_rows, &inp_cols, &filter_cols],
     )
     .unwrap();
 }
@@ -106,42 +100,48 @@ pub fn correlate_shared_row(
         0,
         CUDA_COR_SOURCE,
         "correlateSharedRow",
-        &[
-            input,
-            out,
-            &inp_rows,
-            &inp_cols,
-            &filter_rows,
-        ],
+        &[input, out, &inp_rows, &inp_cols, &filter_rows],
     )
     .unwrap();
 }
-
 
 #[cfg(test)]
 mod tests {
     use custos::{buf, Buffer};
 
-    use crate::{get_constant_memory, cu_filter::correlate_cu_out_auto_pad, correlate_test_kernels::{correlate_shared_col, correlate_shared_row}};
+    use crate::{
+        correlate_test_kernels::{correlate_shared_col, correlate_shared_row},
+        cu_filter::correlate_cu_out_auto_pad,
+        get_constant_memory,
+    };
 
-    use super::{CUDA_COR_SOURCE, correlate_shared};
+    use super::{correlate_shared, CUDA_COR_SOURCE};
 
     #[test]
     fn test_correlate_cu_tex_shared() {
         let height = 1080;
         let width = 1920;
         // let input = buf![128; height * width].to_gpu();
-        let input = (0..height*width).into_iter().map(|_| fastrand::u8(0..255)).collect::<Buffer<u8>>().to_gpu();
-        
+        let input = (0..height * width)
+            .into_iter()
+            .map(|_| fastrand::u8(0..255))
+            .collect::<Buffer<u8>>()
+            .to_gpu();
+
         let filter_rows = 16;
         let filter_cols = 16;
         let filter = buf![1. / (filter_rows * filter_cols) as f32; filter_rows * filter_cols];
 
-        let mut filter_data = get_constant_memory::<f32>(input.device(), CUDA_COR_SOURCE, "correlateShared", "filterData");
+        let mut filter_data = get_constant_memory::<f32>(
+            input.device(),
+            CUDA_COR_SOURCE,
+            "correlateShared",
+            "filterData",
+        );
         filter_data.write(&filter);
 
         let mut out = buf![0; height * width].to_gpu();
-        
+
         correlate_shared(&input, &mut out, height, width, filter_rows, filter_cols);
 
         input.device().stream().sync().unwrap();
@@ -152,25 +152,38 @@ mod tests {
         println!("shared {:?}", start.elapsed());
         // correlate_cu_out_auto_pad(&input, &filter.to_cuda(), &mut output_auto_pad, height, width, filter_rows, filter_cols);
 
-
-
         let mut output_auto_pad = buf![0; height * width].to_gpu();
         let filter_cu = filter.to_cuda();
-        correlate_cu_out_auto_pad(&input, &filter_cu, &mut output_auto_pad, height, width, filter_rows, filter_cols);
+        correlate_cu_out_auto_pad(
+            &input,
+            &filter_cu,
+            &mut output_auto_pad,
+            height,
+            width,
+            filter_rows,
+            filter_cols,
+        );
 
         input.device().stream().sync().unwrap();
 
         let start = std::time::Instant::now();
-        correlate_cu_out_auto_pad(&input, &filter_cu, &mut output_auto_pad, height, width, filter_rows, filter_cols);
+        correlate_cu_out_auto_pad(
+            &input,
+            &filter_cu,
+            &mut output_auto_pad,
+            height,
+            width,
+            filter_rows,
+            filter_cols,
+        );
         input.device().stream().sync().unwrap();
         println!("auto pad {:?}", start.elapsed());
 
         for (op, o) in output_auto_pad.read().iter().zip(out.read().iter()) {
-            if ((*op as f32 - *o as f32)).abs() > 3. {
+            if (*op as f32 - *o as f32).abs() > 3. {
                 panic!("{} {}", op, o);
             }
         }
-        
     }
 
     #[test]
@@ -178,21 +191,35 @@ mod tests {
         let height = 1080;
         let width = 1920;
         // let input = buf![128; height * width].to_gpu();
-        let input = (0..height*width).into_iter().map(|_| fastrand::u8(0..255)).collect::<Buffer<u8>>().to_gpu();
-        
+        let input = (0..height * width)
+            .into_iter()
+            .map(|_| fastrand::u8(0..255))
+            .collect::<Buffer<u8>>()
+            .to_gpu();
+
         let filter_rows = 16;
         let filter_cols = 16;
         let filter = buf![1. / (filter_rows * filter_cols) as f32; filter_rows * filter_cols];
 
-        let mut filter_data = get_constant_memory::<f32>(input.device(), CUDA_COR_SOURCE, "correlateSharedCol", "filterData");
+        let mut filter_data = get_constant_memory::<f32>(
+            input.device(),
+            CUDA_COR_SOURCE,
+            "correlateSharedCol",
+            "filterData",
+        );
         filter_data.write(&filter);
 
         // 'CUDA_SOURCES' is compiled again therefore, a new module is created, which is why this needs to be called again for correlateSharedRow
-        let mut filter_data = get_constant_memory::<f32>(input.device(), CUDA_COR_SOURCE, "correlateSharedRow", "filterData");
+        let mut filter_data = get_constant_memory::<f32>(
+            input.device(),
+            CUDA_COR_SOURCE,
+            "correlateSharedRow",
+            "filterData",
+        );
         filter_data.write(&filter);
 
         let mut out = buf![0; height * width].to_gpu();
-        
+
         correlate_shared_col(&input, &mut out, height, width, filter_rows, filter_cols);
         input.device().stream().sync().unwrap();
         correlate_shared_row(&input, &mut out, height, width, filter_rows);
@@ -207,24 +234,37 @@ mod tests {
         println!("shared {:?}", start.elapsed());
         // correlate_cu_out_auto_pad(&input, &filter.to_cuda(), &mut output_auto_pad, height, width, filter_rows, filter_cols);
 
-
-
         let mut output_auto_pad = buf![0; height * width].to_gpu();
         let filter_cu = filter.to_cuda();
-        correlate_cu_out_auto_pad(&input, &filter_cu, &mut output_auto_pad, height, width, filter_rows, filter_cols);
+        correlate_cu_out_auto_pad(
+            &input,
+            &filter_cu,
+            &mut output_auto_pad,
+            height,
+            width,
+            filter_rows,
+            filter_cols,
+        );
 
         input.device().stream().sync().unwrap();
 
         let start = std::time::Instant::now();
-        correlate_cu_out_auto_pad(&input, &filter_cu, &mut output_auto_pad, height, width, filter_rows, filter_cols);
+        correlate_cu_out_auto_pad(
+            &input,
+            &filter_cu,
+            &mut output_auto_pad,
+            height,
+            width,
+            filter_rows,
+            filter_cols,
+        );
         input.device().stream().sync().unwrap();
         println!("auto pad {:?}", start.elapsed());
 
         for (op, o) in output_auto_pad.read().iter().zip(out.read().iter()) {
-            if ((*op as f32 - *o as f32)).abs() > 3. {
+            if (*op as f32 - *o as f32).abs() > 3. {
                 panic!("{} {}", op, o);
             }
         }
-        
     }
 }

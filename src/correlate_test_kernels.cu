@@ -125,6 +125,6 @@ extern "C" {
         }
 
         // printf("sum: %f\n", sum);
-        out[moveDown * inp_cols + moveRight] += (unsigned char) (sum);
+        out[moveDown * inp_cols + moveRight] = (unsigned char) (sum);
     }
 }

@@ -52,7 +52,7 @@ pub fn correlate_cu_tex(
     filter_rows: usize,
     filter_cols: usize,
 ) {
-    const THREADS: u32 = 8;
+    const THREADS: u32 = 32;
 
     let x_padding = filter_cols - 1;
     let y_padding = filter_rows - 1;
@@ -66,12 +66,21 @@ pub fn correlate_cu_tex(
     let max_right = inp_cols;
 
     // THREADS
-    let grid_x = (padded_rows as f32 / THREADS as f32).ceil() as u32;
-    let grid_y = (padded_cols as f32 / THREADS as f32).ceil() as u32;
+    let grid_x = (inp_rows as f32 / THREADS as f32).ceil() as u32;
+    
+
+    // [64, 135, 1];
+    // [32, 8, 1];
+
+    let grid_x = 64;
+    let threads_x = 32;
+    let threads_y = 8;
+    let grid_y = (inp_cols as f32 / threads_y as f32).ceil() as u32;
+    
     launch_kernel(
         texture.device(),
         [grid_x, grid_y, 1],
-        [THREADS, THREADS, 1],
+        [threads_x, threads_y, 1],
         0,
         CUDA_SOURCE,
         "correlateWithTex",
@@ -106,8 +115,14 @@ pub fn correlate_cu_tex_shared(
     let padded_rows = inp_rows + y_padding * 2;
 
     // THREADS
-    let grid_x = (padded_rows as f32 / THREADS as f32).ceil() as u32;
-    let grid_y = (inp_cols as f32 / THREADS as f32).ceil() as u32;
+    // let grid_x: u32 = (padded_rows as f32 / THREADS as f32).ceil() as u32 +1;
+    // let grid_y = (inp_cols as f32 / THREADS as f32).ceil() as u32 +1;
+
+
+    let grid_x = 64;
+    let threads_x = 32;
+    let threads_y = 8;
+    let grid_y = (inp_cols as f32 / threads_y as f32).ceil() as u32;
 
     let func = fn_cache(texture.device(), CUDA_SOURCE, "correlateWithTexShared").unwrap();
 
@@ -115,8 +130,8 @@ pub fn correlate_cu_tex_shared(
         texture.device(),
         &func,
         [grid_x, grid_y, 1],
-        [THREADS, THREADS, 1],
-        0,//(THREADS + filter_rows as u32) * (THREADS + filter_cols as u32) * size_of::<f32>() as u32 * 4,
+        [threads_x, threads_y, 1],
+        0, //(THREADS + filter_rows as u32) * (THREADS + filter_cols as u32) * size_of::<f32>() as u32 * 4,
         &[
             texture,
             out,
@@ -129,7 +144,6 @@ pub fn correlate_cu_tex_shared(
     .unwrap();
 }
 
-
 // move to custos, as well as the other cu functions
 // mind the todo in the fn_cache function (inefficient module stuff)
 extern "C" {
@@ -140,4 +154,3 @@ extern "C" {
         name: *const std::ffi::c_char,
     ) -> u32;
 }
-
