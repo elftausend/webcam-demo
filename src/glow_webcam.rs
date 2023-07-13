@@ -323,69 +323,8 @@ pub fn glow_webcam(args: &Args) {
 
         // 28x28 - rtx 2060 -> 30fps, 98% gpu utilization - with padding etc
         // 48x49 => using textures -> ~32ms /frame, 30fps, 98% gpu utilization,
-        let filter_rows;
-        let filter_cols;
+        let (filter_rows, filter_cols, filter) = args.filter.to_data(args.marklight_intensity);
 
-        let filter;
-
-        match args.filter {
-            #[rustfmt::skip]
-            Filter::Sharpen => {
-                filter_rows = 3;
-                filter_cols = 3;
-                filter = custos::buf![
-                    0., -1., 0.,
-                    -1., 5., -1.,
-                    0., -1., 0.,
-                ].to_cuda();
-            }
-            Filter::BoxBlur => {
-                filter_rows = 23;
-                filter_cols = 23;
-
-                filter =
-                    custos::buf![1. / (filter_rows*filter_cols) as f32; filter_rows * filter_cols]
-                        .to_cuda();
-            }
-            Filter::Overflow => {
-                filter_rows = 3;
-                filter_cols = 3;
-                filter = custos::buf![
-                    1.; 9
-                ]
-                .to_cuda();
-            }
-            Filter::MarkLight => {
-                filter_rows = 3;
-                filter_cols = 3;
-                filter = custos::buf![args.marklight_intensity; 9].to_cuda();
-            }
-
-            #[rustfmt::skip]
-            Filter::EdgeDetect => {
-                filter_rows = 3;
-                filter_cols = 3;
-                filter = custos::buf![
-                    -1., -1., -1.,
-                    -1., 8., -1.,
-                    -1., -1., -1.,
-                ].to_cuda();
-            }
-            Filter::Test => {
-                filter_rows = 3;
-                filter_cols = 3;
-                filter = custos::buf![
-                    0.14; 9
-                ]
-                .to_cuda();
-            }
-            // could skip calculation(s) afterwards completely
-            Filter::None => {
-                filter_rows = 1;
-                filter_cols = 1;
-                filter = buf![1.; 1].to_cuda()
-            }
-        }
 
         let filter3x3 = custos::buf![1. / 9.; 9].to_cuda();
 

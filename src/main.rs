@@ -7,6 +7,7 @@ use custos::{
     prelude::CUBuffer,
     CUDA,
 };
+use filter::Filter;
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{glow_webcam::check_error, videotex::cuModuleGetGlobal_v2};
@@ -17,35 +18,8 @@ mod glium_webcam;
 mod glow_webcam;
 mod jpeg_decoder;
 mod videotex;
+mod filter;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Filter {
-    Sharpen,
-    BoxBlur,
-    Overflow,
-    // car lights? reflections?
-    MarkLight,
-    EdgeDetect,
-    Test,
-    None,
-}
-
-impl FromStr for Filter {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(match s.to_lowercase().as_str() {
-            "sharpen" => Filter::Sharpen,
-            "boxblur" | "blur" => Filter::BoxBlur,
-            "overflow" => Filter::Overflow,
-            "marklight" => Filter::MarkLight,
-            "edgedetect" | "edge" => Filter::EdgeDetect,
-            "test" => Filter::Test,
-            "none" => Filter::None,
-            _ => return Err(format!("Unknown filter: {s}")),
-        })
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GLBackend {
