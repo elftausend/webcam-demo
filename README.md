@@ -29,6 +29,5 @@ You may want to adjust the resolution of the video stream with the `-w` and `-h`
 ```bash
 cargo run --release -- -w 1280 -h 720
 ```
-```
 
 Sponsored by [www.geofront.eu](https://www.geofront.eu/) (internship)
