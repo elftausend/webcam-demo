@@ -17,7 +17,7 @@ pub enum Filter {
 }
 
 impl Filter {
-    pub fn to_data(&self, marklight_intensity: f32) -> (usize, usize, CUBuffer<f32>) {
+    pub fn to_data(&self, marklight_intensity: f32) -> (usize, usize, CUBuffer<'static, f32>) {
         let filter_rows;
         let filter_cols;
         let filter;
@@ -33,6 +33,8 @@ impl Filter {
                 ].to_cuda();
             }
             Filter::BoxBlur => {
+                // 48x49
+                // 23x23 for shared
                 filter_rows = 23;
                 filter_cols = 23;
 

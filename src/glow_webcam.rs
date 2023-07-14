@@ -96,8 +96,8 @@ pub fn glow_webcam(args: &Args) {
         //gl.enable(glow::BLEND);
         gl.enable(DEBUG_OUTPUT);
 
-        let width = 1920;
-        let height = 1080;
+        let width = args.width as u32;
+        let height = args.height as u32;
 
         let program = gl.create_program().expect("Cannot create program");
 
@@ -435,16 +435,16 @@ pub fn glow_webcam(args: &Args) {
 
                         let correlate_now = Instant::now();
                         // use __constant__ filter memory as well 
-                        // correlate_cu_tex(&mut surface_texture, &filter,&mut surface, height as usize, width as usize, filter_rows, filter_cols);
+                        correlate_cu_tex(&mut surface_texture, &mut surface, height as usize, width as usize, filter_rows, filter_cols);
 
                         // uses __constant__ filter memory
-                        correlate_cu_tex_shared(&mut surface_texture, &mut surface, height as usize, width as usize, filter_rows, filter_cols);
+                        // correlate_cu_tex_shared(&mut surface_texture, &mut surface, height as usize, width as usize, filter_rows, filter_cols);
                         device.stream().sync().unwrap();
                         println!("Correlate took: {:?}", correlate_now.elapsed());
                     }
 
                     if updated {
-                        println!("Calculating cuda stuff took: {:?}", frame_time.elapsed());
+                        // println!("Calculating cuda stuff took: {:?}", frame_time.elapsed());
                     }
                     //fill_cuda_surface(&mut surface, width as usize, height as usize, fastrand::u8(0..=255), fastrand::u8(0..=255), fastrand::u8(0..=255)).unwrap();
 

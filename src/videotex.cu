@@ -26,7 +26,7 @@ extern "C"{
     }
     __constant__ float filterData[64*64];
 
-    __global__ void correlateWithTex(cudaTextureObject_t inputTexture, float* filter, cudaSurfaceObject_t out, 
+    __global__ void correlateWithTex(cudaTextureObject_t inputTexture, cudaSurfaceObject_t out, 
             int inp_rows, int inp_cols, int filter_rows, 
             int filter_cols, int maxDown, int maxRight, int paddedCols
     ) {

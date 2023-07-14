@@ -45,7 +45,6 @@ pub fn interleave_rgb(
 
 pub fn correlate_cu_tex(
     texture: &CUBuffer<u8>,
-    filter: &CUBuffer<f32>,
     out: &mut CUBuffer<u8>,
     inp_rows: usize,
     inp_cols: usize,
@@ -86,7 +85,6 @@ pub fn correlate_cu_tex(
         "correlateWithTex",
         &[
             texture,
-            filter,
             out,
             &inp_rows,
             &inp_cols,

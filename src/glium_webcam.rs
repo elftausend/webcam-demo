@@ -16,13 +16,13 @@ use v4l::video::Capture;
 use v4l::{Format, FourCC};
 
 use crate::cu_filter::{correlate_cu, correlate_fully, correlate_fully_u8, correlate_valid_mut};
-use crate::jpeg_decoder;
+use crate::{jpeg_decoder, Args};
 
 // https://github.com/raymanfx/libv4l-rs/blob/master/examples/glium.rs
 
-pub fn glium_webcam() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let width = 1920;
-    let height = 1080;
+pub fn glium_webcam(args: &Args) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let width = args.width;
+    let height = args.height;
 
     let path = "/dev/video0";
     println!("Using device: {}\n", path);
@@ -37,7 +37,7 @@ pub fn glium_webcam() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     {
         let dev = dev.write().unwrap();
         //format = dev.format()?;
-        format = Format::new(width, height, FourCC::new(b"RGB3"));
+        format = Format::new(width as u32, height as u32, FourCC::new(b"RGB3"));
         println!("format: {format}");
         params = dev.params()?;
 

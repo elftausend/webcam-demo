@@ -51,13 +51,17 @@ pub struct Args {
 
     #[arg(short, long, default_value = "0.13")]
     marklight_intensity: f32,
+    #[arg(short, long, default_value = "1920")]
+    width: usize,
+    #[arg(short, long, default_value = "1080")]
+    height: usize,
 }
 
 fn main() {
     let args = Args::parse();
 
     match args.gl_backend {
-        GLBackend::Glium => glium_webcam::glium_webcam().unwrap(),
+        GLBackend::Glium => glium_webcam::glium_webcam(&args).unwrap(),
         GLBackend::Glow => glow_webcam::glow_webcam(&args),
     }
 }
